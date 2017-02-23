@@ -1,0 +1,16 @@
+---
+inputs:
+  - name: instance-id
+image_resource:
+  type: docker-image
+  source:
+    repository: governmentpaas/awscli
+platform: linux
+run:
+  path: sh
+  args:
+    - -e
+    - -c
+    - |
+      aws ec2 terminate-instances --region eu-west-1 --instance-ids $(cat instance-id/id)
+      sleep 30

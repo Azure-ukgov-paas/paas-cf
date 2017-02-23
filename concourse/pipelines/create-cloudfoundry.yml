@@ -1,0 +1,2371 @@
+---
+groups:
+  - name: all
+    jobs:
+      - pipeline-lock
+      - init
+      - pre-deploy
+      - generate-secrets
+      - availability-tests
+      - cf-terraform
+      - generate-cf-config
+      - cf-deploy
+      - smoke-tests
+      - acceptance-tests
+      - custom-acceptance-tests
+      - bosh-tests
+      - performance-tests
+      - tag-release
+      - pipeline-unlock
+  - name: cloudfoundry
+    jobs:
+      - pre-deploy
+      - generate-secrets
+      - availability-tests
+      - cf-terraform
+      - generate-cf-config
+      - cf-deploy
+      - smoke-tests
+      - acceptance-tests
+      - custom-acceptance-tests
+      - bosh-tests
+      - performance-tests
+      - tag-release
+      - pipeline-unlock
+  - name: operator
+    jobs:
+      - generate-git-keys
+      - show-release-version
+      - bump-minor-version
+      - bump-major-version
+      - bump-patch-version
+      - pipeline-check-lock
+      - pipeline-release-lock
+  - name: tests
+    jobs:
+      - availability-tests
+      - smoke-tests
+      - acceptance-tests
+      - custom-acceptance-tests
+      - bosh-tests
+      - performance-tests
+  - name: health
+    jobs:
+      - continuous-smoke-tests
+
+resource_types:
+- name: s3-iam
+  type: docker-image
+  source:
+    repository: governmentpaas/s3-resource
+
+- name: semver-iam
+  type: docker-image
+  source:
+    repository: governmentpaas/semver-resource
+
+resources:
+  - name: pipeline-trigger
+    type: semver-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      key: {{pipeline_trigger_file}}
+
+  - name: paas-cf
+    type: git
+    source:
+      uri: https://github.com/alphagov/paas-cf.git
+      branch: {{branch_name}}
+      tag_filter: {{paas_cf_tag_filter}}
+      commit_verification_key_ids: {{gpg_ids}}
+
+  - name: graphite-nozzle
+    type: git
+    source:
+      uri: https://github.com/alphagov/paas-graphite-nozzle
+      branch: gds_master
+
+  - name: vpc-tfstate
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      versioned_file: vpc.tfstate
+
+  - name: concourse-tfstate
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      versioned_file: concourse.tfstate
+      region_name: eu-west-1
+
+  - name: bosh-tfstate
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      versioned_file: bosh.tfstate
+
+  - name: bosh-secrets
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      versioned_file: bosh-secrets.yml
+
+  - name: bosh-CA
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      versioned_file: bosh-CA.tar.gz
+
+  - name: ipsec-CA
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      versioned_file: ipsec-CA.tar.gz
+
+  - name: ssh-private-key
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      versioned_file: id_rsa
+      region_name: {{aws_region}}
+
+  - name: ssh-public-key
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      versioned_file: id_rsa.pub
+      region_name: {{aws_region}}
+
+
+  - name: git-ssh-private-key
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      versioned_file: git_id_rsa
+      region_name: {{aws_region}}
+
+  - name: cf-tfstate
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      versioned_file: cf.tfstate
+      region_name: eu-west-1
+
+  - name: datadog-tfstate
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      versioned_file: datadog.tfstate
+      region_name: eu-west-1
+
+  - name: cf-secrets
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      versioned_file: cf-secrets.yml
+
+  - name: cf-certs
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      versioned_file: cf-certs.tar.gz
+
+  - name: cf-certs-tfstate
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      versioned_file: cf-certs.tfstate
+      region_name: eu-west-1
+
+  - name: cf-manifest
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      versioned_file: cf-manifest.yml
+
+  - name: cloud-config
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      versioned_file: cloud-config.yml
+
+  - name: deployed-healthcheck
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      versioned_file: healthcheck-deployed
+
+  - name: cf-release
+    type: git
+    source:
+      uri: https://github.com/cloudfoundry/cf-release
+      tag_filter: {{cf_release_version}}
+
+  - name: git-keys
+    type: s3-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      versioned_file: git-keys.tar.gz
+
+  - name: release-version
+    type: semver-iam
+    source:
+      bucket: {{state_bucket}}
+      region_name: {{aws_region}}
+      key: release-version
+      initial_version: 0.0.0
+
+  - name: pipeline-pool
+    type: pool
+    source:
+      uri: {{git_concourse_pool_clone_full_url_ssh}}
+      branch: master
+      pool: {{pipeline_name}}
+      private_key: {{pipeline_lock_git_private_key}}
+
+  - name: smoke-tests-timer
+    type: time
+    source:
+      interval: 5m
+
+  - name: paas-roadmap
+    type: git
+    source:
+      uri: https://github.com/alphagov/paas-roadmap
+
+  - name: paas-rubbernecker
+    type: git
+    source:
+      uri: https://github.com/alphagov/paas-rubbernecker
+
+jobs:
+  - name: pipeline-lock
+    serial: true
+    plan:
+      - aggregate:
+        - get: paas-cf
+          trigger: {{auto_deploy}}
+        - get: git-ssh-private-key
+      - task: init-pipeline-pool
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/git-ssh
+          inputs:
+            - name: paas-cf
+            - name: git-ssh-private-key
+          params:
+            DEPLOY_ENV: {{deploy_env}}
+            AWS_ACCOUNT: {{aws_account}}
+            DISABLE_PIPELINE_LOCKING: {{disable_pipeline_locking}}
+          run:
+            path: sh
+            args:
+            - -e
+            - -c
+            - |
+              if [ "${DISABLE_PIPELINE_LOCKING:-}" = "true" ] ; then
+                 echo "Pipeline locking is disabled, skipping..."
+                 exit 0
+              fi
+              chmod 600 git-ssh-private-key/git_id_rsa
+              git config --global push.default simple
+              git config --global user.email "concourse@${DEPLOY_ENV}.${AWS_ACCOUNT}"
+              git config --global user.name "Concourse server ${DEPLOY_ENV} in ${AWS_ACCOUNT}"
+
+              ./paas-cf/concourse/scripts/create_pool_lock.sh \
+                {{git_concourse_pool_clone_full_url_ssh}} \
+                $(pwd)/git-ssh-private-key/git_id_rsa \
+                {{pipeline_name}} lock
+
+      - try:
+          task: lock-the-pipeline
+          config:
+            image_resource:
+              type: docker-image
+              source:
+                repository: alpine
+                tag: "3.4"
+            platform: linux
+            params:
+              DISABLE_PIPELINE_LOCKING: {{disable_pipeline_locking}}
+            run:
+              path: sh
+              args:
+              - -e
+              - -c
+              - |
+                if [ "${DISABLE_PIPELINE_LOCKING:-}" = "true" ] ; then
+                   echo "Pipeline locking is disabled, skipping..."
+                   exit 0
+                fi
+                echo "About to lock. This job will fail and this is OK."
+                exit 1
+          on_failure:
+            put: pipeline-pool
+            params:
+              claim: lock
+
+      - task: self-update-pipeline
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/self-update-pipelines
+          inputs:
+            - name: paas-cf
+          params:
+            DEPLOY_ENV: {{deploy_env}}
+            BRANCH: {{branch_name}}
+            AWS_ACCOUNT: {{aws_account}}
+            SELF_UPDATE_PIPELINE: {{self_update_pipeline}}
+            PIPELINES_TO_UPDATE: {{pipeline_name}}
+            BOSH_AZ: {{bosh_az}}
+          run:
+            path: ./paas-cf/concourse/scripts/self-update-pipeline.sh
+      - put: pipeline-trigger
+        params: {bump: patch}
+
+
+  - name: init
+    serial_groups: [bosh-deploy]
+    serial: true
+    plan:
+      - get: pipeline-trigger
+        trigger: true
+        passed: ['pipeline-lock']
+      - get: paas-cf
+        passed: ['pipeline-lock']
+      - task: bootstrap-s3-state
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/curl-ssl
+          inputs:
+            - name: paas-cf
+          run:
+            path: sh
+            args:
+              - -e
+              - -c
+              - |
+                paas-cf/concourse/scripts/s3init.sh {{state_bucket}} ipsec-CA.tar.gz paas-cf/concourse/init_files/empty.tar.gz
+                paas-cf/concourse/scripts/s3init.sh {{state_bucket}} cf-secrets.yml paas-cf/concourse/init_files/zero_bytes
+                paas-cf/concourse/scripts/s3init.sh {{state_bucket}} cf.tfstate paas-cf/concourse/init_files/terraform.tfstate.tpl
+                paas-cf/concourse/scripts/s3init.sh {{state_bucket}} cf-certs.tar.gz paas-cf/concourse/init_files/empty.tar.gz
+                paas-cf/concourse/scripts/s3init.sh {{state_bucket}} cf-certs.tfstate paas-cf/concourse/init_files/terraform.tfstate.tpl
+                paas-cf/concourse/scripts/s3init.sh {{state_bucket}} datadog.tfstate paas-cf/concourse/init_files/terraform.tfstate.tpl
+                paas-cf/concourse/scripts/s3init.sh {{state_bucket}} git-keys.tar.gz paas-cf/concourse/init_files/empty.tar.gz
+                paas-cf/concourse/scripts/s3init.sh {{state_bucket}} id_rsa paas-cf/concourse/init_files/zero_bytes
+                paas-cf/concourse/scripts/s3init.sh {{state_bucket}} id_rsa.pub paas-cf/concourse/init_files/zero_bytes
+                paas-cf/concourse/scripts/s3init.sh {{state_bucket}} healthcheck-deployed paas-cf/concourse/init_files/string-no
+
+  - name: generate-secrets
+    serial_groups: [cf-deploy]
+    serial: true
+    plan:
+      - aggregate:
+          - get: paas-cf
+            passed: ['init']
+          - get: pipeline-trigger
+            passed: ['init']
+            trigger: true
+          - get: bosh-CA
+          - get: ipsec-CA
+          - get: cf-certs
+          - get: cf-secrets
+          - get: ssh-private-key
+          - get: ssh-public-key
+
+      - aggregate:
+        - task: generate-ipsec-CA
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/certstrap
+            inputs:
+              - name: paas-cf
+              - name: ipsec-CA
+                path: existing-ipsec-CA
+            outputs:
+              - name: generated-ipsec-CA
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  if  [ -z "$(tar -tvzf existing-ipsec-CA/ipsec-CA.tar.gz)" ] ; then
+                    certstrap init --passphrase "" --common-name ipsec-CA
+                    (cd out && tar -cvzf ../generated-ipsec-CA/ipsec-CA.tar.gz ipsec-CA.*)
+                  else
+                    echo "The CA cert already exists, skipping generation..."
+                    cp existing-ipsec-CA/ipsec-CA.tar.gz generated-ipsec-CA/ipsec-CA.tar.gz
+                    mkdir out
+                    tar -xvzf generated-ipsec-CA/ipsec-CA.tar.gz -C out
+                  fi
+                  ./paas-cf/concourse/scripts/file_to_yaml.sh secrets ipsec_ca_cert out/ipsec-CA.crt > generated-ipsec-CA/ipsec-ca-cert.yml
+          on_success:
+            put: ipsec-CA
+            params:
+              file: generated-ipsec-CA/ipsec-CA.tar.gz
+
+        - task: generate-deployments-ssh-keypair
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/git-ssh
+            inputs:
+              - name: paas-cf
+              - name: ssh-private-key
+              - name: ssh-public-key
+            outputs:
+              - name: generated-ssh-private-key
+              - name: generated-ssh-public-key
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  if [ -s ssh-private-key/id_rsa ] ; then
+                    echo "Deployments private key non-zero size, skipping generation..."
+                    echo "Key uploads will fail and this is OK as no new keys have been generated."
+                    exit 0
+                  fi
+
+                  echo "Generating new ssh key pair for deployments..."
+                  ssh-keygen -t rsa -b 4096 -f id_rsa -N ''
+                  cp id_rsa generated-ssh-private-key
+                  cp id_rsa.pub generated-ssh-public-key
+          on_success:
+            try:
+              aggregate:
+                - put: ssh-private-key
+                  params:
+                    file: generated-ssh-private-key/id_rsa
+                - put: ssh-public-key
+                  params:
+                    file: generated-ssh-public-key/id_rsa.pub
+
+        - task: generate-cf-certs
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/certstrap
+            inputs:
+              - name: bosh-CA
+              - name: paas-cf
+              - name: cf-certs
+            outputs:
+              - name: generated-cf-certs
+            params:
+              SYSTEM_DNS_ZONE_NAME: {{system_dns_zone_name}}
+              APPS_DNS_ZONE_NAME: {{apps_dns_zone_name}}
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  mkdir certs
+                  echo "Extracting extant certs"
+                  tar -xvzf cf-certs/cf-certs.tar.gz -C certs
+
+                  ./paas-cf/manifests/cf-manifest/scripts/generate-cf-certs.sh certs bosh-CA/bosh-CA.tar.gz
+
+                  echo "Generating uaa_jwt_signing public key from private key"
+                  openssl rsa -pubout -in certs/uaa_jwt_signing.key -out certs/uaa_jwt_verification.pem
+
+                  echo "Creating updated cert tarball"
+                  cd certs
+                  tar -cvzf ../generated-cf-certs/cf-certs.tar.gz .
+          on_success:
+            put: cf-certs
+            params:
+              file: generated-cf-certs/cf-certs.tar.gz
+
+        - task: generate-cf-secrets
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: ruby
+                tag: 2.2-slim
+            inputs:
+              - name: paas-cf
+              - name: cf-secrets
+                path: existing-cf-secrets
+            outputs:
+              - name: generated-cf-secrets
+            run:
+              path: sh
+              args:
+                - -c
+                - -e
+                - |
+                  ./paas-cf/manifests/cf-manifest/scripts/generate-cf-secrets.rb \
+                    --existing-secrets existing-cf-secrets/cf-secrets.yml \
+                    > generated-cf-secrets/cf-secrets.yml
+                  ls -l generated-cf-secrets
+          on_success:
+            put: cf-secrets
+            params:
+              file: generated-cf-secrets/cf-secrets.yml
+
+  - name: pre-deploy
+    plan:
+      - aggregate:
+          - get: pipeline-trigger
+            passed: ['generate-secrets']
+            trigger: true
+          - get: deployed-healthcheck
+          - get: paas-cf
+            passed: ['generate-secrets']
+          - get: cf-secrets
+            passed: ['generate-secrets']
+          - get: bosh-CA
+            passed: ['generate-secrets']
+      - try:
+          task: wait-for-availability-test
+          config:
+            platform: linux
+            inputs:
+              - name: bosh-CA
+              - name: paas-cf
+              - name: cf-secrets
+              - name: deployed-healthcheck
+              - name: pipeline-trigger
+            params:
+              SYSTEM_DNS_ZONE_NAME: {{system_dns_zone_name}}
+              CF_ADMIN: admin
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-cli
+            run:
+              path: sh
+              args:
+                - -e
+                - -u
+                - -c
+                - |
+                  HEALTHCHECK_DEPLOYED=$(cat deployed-healthcheck/healthcheck-deployed)
+                  if [ "${HEALTHCHECK_DEPLOYED}" = "no" ]; then
+                    echo "Skipping availability tests because the healthcheck is not deployed"
+                    exit 0
+                  fi
+
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+
+                  CF_PASS=$(awk '/uaa_admin_password/ {print $2}' cf-secrets/cf-secrets.yml | tr -d '"')
+                  API_ENDPOINT="https://api.${SYSTEM_DNS_ZONE_NAME}"
+                  PIPELINE_TRIGGER_VERSION=$(cat pipeline-trigger/number)
+
+                  echo | cf login -a ${API_ENDPOINT} -u ${CF_ADMIN} -p ${CF_PASS} > /dev/null
+                  cf target -o testers -s healthcheck > /dev/null
+
+                  echo "Waiting two minutes for availability test to start:"
+                  for i in $(seq 24); do
+                    if cf logs healthcheck --recent | grep -q "availability-test=${PIPELINE_TRIGGER_VERSION}"; then
+                      echo "Request detected"
+                      break
+                    fi
+                    printf "."
+                    sleep 5
+                  done
+
+
+  - name: availability-tests
+    plan:
+      - aggregate:
+          - get: pipeline-trigger
+            passed: ['generate-secrets']
+            trigger: true
+          - get: deployed-healthcheck
+          - get: paas-cf
+            passed: ['generate-secrets']
+          - get: bosh-CA
+      - task: run-tests
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/cf-acceptance-tests
+          inputs:
+            - name: paas-cf
+            - name: pipeline-trigger
+            - name: bosh-CA
+            - name: deployed-healthcheck
+          params:
+            SKIP_SSL_VALIDATION: true
+            APPS_DNS_ZONE_NAME: {{apps_dns_zone_name}}
+            SYSTEM_DNS_ZONE_NAME: {{system_dns_zone_name}}
+            CONCOURSE_ATC_USERNAME: admin
+            DEPLOY_ENV: {{deploy_env}}
+            BRANCH: {{branch_name}}
+            CONCOURSE_ATC_PASSWORD: {{concourse_atc_password}}
+          run:
+            path: sh
+            args:
+              - -e
+              - -c
+              - |
+                HEALTHCHECK_DEPLOYED=$(cat deployed-healthcheck/healthcheck-deployed)
+                if [ "${HEALTHCHECK_DEPLOYED}" = "no" ]; then
+                  echo "Skipping availability tests because the healthcheck is not deployed"
+                  exit 0
+                fi
+
+                ./paas-cf/concourse/scripts/import_bosh_ca.sh
+
+                export CONCOURSE_ATC_URL
+                CONCOURSE_ATC_URL=https://deployer.${SYSTEM_DNS_ZONE_NAME}
+                export PIPELINE_TRIGGER_VERSION
+                PIPELINE_TRIGGER_VERSION=$(cat pipeline-trigger/number)
+
+                echo "Running tests"
+                ./paas-cf/platform-tests/run_tests.sh ./paas-cf/platform-tests/src/availability
+
+  - name: cf-terraform
+    serial_groups: [cf-deploy]
+    serial: true
+    plan:
+      - aggregate:
+          - get: paas-cf
+            passed: ['pre-deploy']
+          - get: pipeline-trigger
+            passed: ['pre-deploy']
+            trigger: true
+          - get: vpc-tfstate
+          - get: concourse-tfstate
+          - get: cf-tfstate
+          - get: cf-certs-tfstate
+          - get: bosh-CA
+            passed: ['pre-deploy']
+          - get: cf-certs
+            passed: ['generate-secrets']
+          - get: cf-secrets
+            passed: ['pre-deploy']
+
+      - task: upload-certs-to-aws
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/terraform
+          inputs:
+            - name: paas-cf
+            - name: cf-certs-tfstate
+            - name: bosh-CA
+            - name: cf-certs
+          outputs:
+            - name: updated-tfstate
+          params:
+            TF_VAR_env: {{deploy_env}}
+            SKIP_UPLOAD_GENERATED_CERTS: {{skip_upload_generated_certs}}
+          run:
+            path: sh
+            args:
+              - -e
+              - -c
+              - |
+                if [ "${SKIP_UPLOAD_GENERATED_CERTS}" = "true" ]; then
+                  cp cf-certs-tfstate/cf-certs.tfstate updated-tfstate/cf-certs.tfstate
+                  echo "Using pre-uploaded public certificates for ${TF_VAR_env}"
+                else
+                  mkdir generated-certificates
+                  tar xzf cf-certs/cf-certs.tar.gz -C generated-certificates
+                  tar xzf bosh-CA/bosh-CA.tar.gz
+
+                  terraform apply -var-file=paas-cf/terraform/{{aws_account}}.tfvars \
+                    -var system_domain_crt="$(cat generated-certificates/system_domain.crt)" \
+                    -var system_domain_key="$(cat generated-certificates/system_domain.key)" \
+                    -var system_domain_intermediate_crt="$(cat bosh-CA.crt)" \
+                    -var apps_domain_crt="$(cat generated-certificates/apps_domain.crt)" \
+                    -var apps_domain_key="$(cat generated-certificates/apps_domain.key)" \
+                    -var apps_domain_intermediate_crt="$(cat bosh-CA.crt)" \
+                    -state=cf-certs-tfstate/cf-certs.tfstate \
+                    -state-out=updated-tfstate/cf-certs.tfstate \
+                    paas-cf/terraform/cf-certs
+                fi
+        ensure:
+          put: cf-certs-tfstate
+          params:
+            file: updated-tfstate/cf-certs.tfstate
+
+      - task: retrieve-pingdom-probes-ips
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/curl-ssl
+          inputs:
+            - name: paas-cf
+          outputs:
+            - name: pingdom-probes-ips
+          run:
+            path: sh
+            args:
+              - -e
+              - -c
+              - |
+                curl -Lfqs https://www.pingdom.com/rss/probe_servers.xml > probe_servers.xml
+                IPS_PER_BLOCK=32
+                # shellcheck disable=SC2002
+                cat probe_servers.xml | \
+                  grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' | \
+                  sort | uniq | sed 's/$/\/32/' | xargs -n ${IPS_PER_BLOCK} | tr ' ' ',' | \
+                  awk '{print "export TF_VAR_pingdom_probe_cidrs_" NR-1 "=" $0}' \
+                  > pingdom-probes-ips/pingdom-probes-ips.sh
+
+      - task: extract-terraform-variables
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: ruby
+              tag: 2.2-slim
+          inputs:
+            - name: paas-cf
+            - name: vpc-tfstate
+            - name: concourse-tfstate
+            - name: cf-secrets
+            - name: cf-certs-tfstate
+          outputs:
+            - name: terraform-variables
+          run:
+            path: sh
+            args:
+              - -e
+              - -c
+              - |
+                ruby paas-cf/concourse/scripts/extract_tf_vars_from_terraform_state.rb \
+                < vpc-tfstate/vpc.tfstate > terraform-variables/vpc.tfvars.sh
+                ruby paas-cf/concourse/scripts/extract_tf_vars_from_terraform_state.rb \
+                < concourse-tfstate/concourse.tfstate > terraform-variables/concourse.tfvars.sh
+                ruby paas-cf/concourse/scripts/extract_tf_vars_from_terraform_state.rb \
+                < cf-certs-tfstate/cf-certs.tfstate > terraform-variables/cf-certs.tfvars.sh
+                ruby paas-cf/concourse/scripts/extract_tf_vars_from_yaml.rb \
+                < cf-secrets/cf-secrets.yml > terraform-variables/cf-secrets.tfvars.sh
+      - task: terraform-apply
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/terraform
+          inputs:
+            - name: terraform-variables
+            - name: paas-cf
+            - name: cf-tfstate
+            - name: cf-certs
+            - name: pingdom-probes-ips
+          outputs:
+            - name: updated-tfstate
+          params:
+            TF_VAR_env: {{deploy_env}}
+            TF_VAR_system_dns_zone_name: {{system_dns_zone_name}}
+            TF_VAR_apps_dns_zone_name: {{apps_dns_zone_name}}
+            AWS_DEFAULT_REGION: {{aws_region}}
+          run:
+            path: sh
+            args:
+              - -e
+              - -c
+              - |
+                . terraform-variables/vpc.tfvars.sh
+                . terraform-variables/concourse.tfvars.sh
+                . terraform-variables/cf-certs.tfvars.sh
+                . terraform-variables/cf-secrets.tfvars.sh
+
+                . pingdom-probes-ips/pingdom-probes-ips.sh
+
+                mkdir generated-certificates
+                tar xzf cf-certs/cf-certs.tar.gz -C generated-certificates
+
+                terraform apply -var-file=paas-cf/terraform/{{aws_account}}.tfvars \
+                  -state=cf-tfstate/cf.tfstate -state-out=updated-tfstate/cf.tfstate paas-cf/terraform/cloudfoundry
+        ensure:
+          put: cf-tfstate
+          params:
+            file: updated-tfstate/cf.tfstate
+
+      - task: extract-cf-terraform-outputs
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: ruby
+              tag: 2.2-slim
+          inputs:
+            - name: paas-cf
+            - name: cf-tfstate
+          outputs:
+            - name: cf-terraform-outputs
+          run:
+            path: sh
+            args:
+              - -e
+              - -c
+              - |
+                SCPATH="./paas-cf/concourse/scripts"
+                SCFILE="extract_tf_vars_from_terraform_state.rb"
+                $SCPATH/$SCFILE < cf-tfstate/cf.tfstate > cf-terraform-outputs/cf.tfstate.sh
+                ls -l cf-terraform-outputs/cf.tfstate.sh
+      - task: init-db
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/psql
+          inputs:
+            - name: terraform-variables
+            - name: paas-cf
+            - name: cf-terraform-outputs
+          run:
+            path: sh
+            args:
+              - -e
+              - -c
+              - |
+                . terraform-variables/cf-secrets.tfvars.sh
+                . cf-terraform-outputs/cf.tfstate.sh
+
+                paas-cf/manifests/cf-manifest/scripts/create-cf-dbs.sh
+
+  - name: generate-cf-config
+    serial_groups: [cf-deploy]
+    serial: true
+    plan:
+      - aggregate:
+          - get: pipeline-trigger
+            passed: ['cf-terraform']
+            trigger: true
+          - get: paas-cf
+            passed: ['cf-terraform']
+          - get: bosh-CA
+          - get: ipsec-CA
+          - get: cf-secrets
+            passed: ['cf-terraform']
+          - get: cf-certs
+          - get: vpc-tfstate
+          - get: concourse-tfstate
+          - get: bosh-tfstate
+          - get: cf-tfstate
+            passed: ['cf-terraform']
+      - aggregate:
+        - task: extract-terraform-outputs
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: ruby
+                tag: 2.2-slim
+            inputs:
+              - name: paas-cf
+              - name: vpc-tfstate
+              - name: bosh-tfstate
+              - name: concourse-tfstate
+              - name: cf-tfstate
+            outputs:
+              - name: terraform-outputs
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  for state in vpc bosh concourse cf; do
+                    ./paas-cf/concourse/scripts/extract_terraform_state_to_yaml.rb \
+                      < $state-tfstate/$state.tfstate \
+                      > terraform-outputs/$state.yml
+                    ./paas-cf/concourse/scripts/extract_tf_vars_from_terraform_state.rb \
+                      < ${state}-tfstate/${state}.tfstate \
+                      > terraform-outputs/${state}.tfvars.sh
+                  done
+
+        - task: generate-grafana-dashboards-manifest
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/json-minify
+            inputs:
+              - name: paas-cf
+            outputs:
+              - name: grafana-dashboards-manifest
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  CF_MANIFEST_DIR=./paas-cf/manifests/cf-manifest
+                  ${CF_MANIFEST_DIR}/scripts/grafana-dashboards-manifest.rb ${CF_MANIFEST_DIR}/grafana \
+                    > grafana-dashboards-manifest/grafana-dashboards-manifest.yml
+
+      - aggregate:
+        - task: generate-cloud-config
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/spruce
+            inputs:
+              - name: paas-cf
+              - name: terraform-outputs
+              - name: cf-secrets
+            outputs:
+              - name: cloud-config
+            params:
+              MANIFEST_STUBS: |
+                ./paas-cf/manifests/cf-manifest/cloud-config/*.yml
+                ./terraform-outputs/*.yml
+                ./cf-secrets/cf-secrets.yml
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  echo "Generating cloud config..."
+
+                  ./paas-cf/manifests/shared/build_manifest.sh $MANIFEST_STUBS > cloud-config/cloud-config.yml
+          on_success:
+            put: cloud-config
+            params:
+              file: cloud-config/cloud-config.yml
+
+        - task: generate-cf-manifest
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/spruce
+            inputs:
+              - name: paas-cf
+              - name: terraform-outputs
+              - name: cf-secrets
+              - name: cf-certs
+              - name: bosh-CA
+              - name: ipsec-CA
+              - name: grafana-dashboards-manifest
+            outputs:
+              - name: cf-manifest
+            params:
+              MANIFEST_STUBS: |
+                ./paas-cf/manifests/cf-manifest/manifest/*.yml
+                ./paas-cf/manifests/cf-manifest/manifest/data/*.yml
+                ./terraform-outputs/*.yml
+                ./cf-secrets/cf-secrets.yml
+                ./certs/*.yml
+                ./grafana-dashboards-manifest/grafana-dashboards-manifest.yml
+                ./paas-cf/manifests/cf-manifest/manifest/env-specific/{{cf_env_specific_manifest}}
+              AWS_ACCOUNT: {{aws_account}}
+              ENABLE_DATADOG: {{enable_datadog}}
+              DATADOG_API_KEY: {{datadog_api_key}}
+            run:
+              path: sh
+              args:
+                - -e
+                - -u
+                - -c
+                - |
+                  mkdir certs
+                  echo "Extracting extant certs"
+                  tar -xvzf bosh-CA/bosh-CA.tar.gz -C certs
+                  tar -xvzf ipsec-CA/ipsec-CA.tar.gz -C certs
+                  tar -xvzf cf-certs/cf-certs.tar.gz -C certs
+
+                  cd certs
+                  for file in *.crt; do
+                    cn=${file%.crt}
+                    yaml_key_name=$(echo ${cn} | tr A-Z- a-z_)
+
+                    echo "Converting ${cn} certs to YAML"
+                    ../paas-cf/concourse/scripts/file_to_yaml.sh secrets ${yaml_key_name}_key ${cn}.key > ${cn}_key.yml
+                    ../paas-cf/concourse/scripts/file_to_yaml.sh secrets ${yaml_key_name}_cert ${cn}.crt > ${cn}_cert.yml
+                  done
+
+                  ../paas-cf/concourse/scripts/file_to_yaml.sh secrets uaa_jwt_verification_key uaa_jwt_verification.pem > uaa_jwt_verification_key.yml
+                  # shellcheck disable=SC2103
+                  cd .. || true
+
+                  echo "Generating manifests"
+
+                  if [ "${ENABLE_DATADOG}" = "true" ] ; then
+                     MANIFEST_STUBS="${MANIFEST_STUBS}
+                                    ./paas-cf/manifests/cf-manifest/stubs/datadog-nozzle.yml"
+                  fi
+
+                  # FIXME: Remove eval after https://github.com/concourse/concourse/issues/360
+                  eval ./paas-cf/manifests/shared/build_manifest.sh $MANIFEST_STUBS > cf-manifest/cf-manifest.yml
+          on_success:
+            put: cf-manifest
+            params:
+              file: cf-manifest/cf-manifest.yml
+
+  - name: cf-deploy
+    serial_groups: [cf-deploy]
+    serial: true
+    plan:
+      - aggregate:
+          - get: cf-release
+            version:
+              ref: {{cf_release_version}}
+            params:
+              submodules:
+                - src/smoke-tests
+          - get: pipeline-trigger
+            passed: ['generate-cf-config']
+            trigger: true
+          - get: paas-cf
+            passed: ['generate-cf-config']
+          - get: cloud-config
+            passed: ['generate-cf-config']
+          - get: cf-manifest
+            passed: ['generate-cf-config']
+          - get: cf-tfstate
+            passed: ['generate-cf-config']
+          - get: bosh-secrets
+          - get: cf-secrets
+            passed: ['generate-cf-config']
+          - get: bosh-CA
+          - get: graphite-nozzle
+          - get: datadog-tfstate
+          - get: paas-roadmap
+          - get: paas-rubbernecker
+
+      - aggregate:
+        - task: extract-cf-terraform-outputs
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: ruby
+                tag: 2.2-slim
+            inputs:
+              - name: paas-cf
+              - name: cf-tfstate
+            outputs:
+              - name: cf-terraform-outputs
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  SCPATH="./paas-cf/concourse/scripts"
+                  SCFILE="extract_tf_vars_from_terraform_state.rb"
+                  $SCPATH/$SCFILE < cf-tfstate/cf.tfstate > cf-terraform-outputs/cf.tfstate.sh
+                  ls -l cf-terraform-outputs/cf.tfstate.sh
+
+        - task: get-and-upload-stemcell
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/bosh-cli
+            inputs:
+              - name: bosh-secrets
+              - name: paas-cf
+              - name: cf-manifest
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  VAL_FROM_YAML=$(pwd)/paas-cf/concourse/scripts/val_from_yaml.rb
+
+                  stemcell_index=0
+                  while true; do
+                    if ! $VAL_FROM_YAML "stemcells.${stemcell_index}" cf-manifest/cf-manifest.yml > /dev/null 2>&1; then
+                      break
+                    fi
+
+                    STEMCELL_VERSION=$($VAL_FROM_YAML "stemcells.${stemcell_index}.version" cf-manifest/cf-manifest.yml)
+                    STEMCELL_NAME=$($VAL_FROM_YAML "stemcells.${stemcell_index}.name" cf-manifest/cf-manifest.yml)
+
+                    wget https://bosh.io/d/stemcells/${STEMCELL_NAME}?v=${STEMCELL_VERSION} -O stemcell.tgz
+                    ./paas-cf/concourse/scripts/bosh_login.sh {{bosh_fqdn}} bosh-secrets/bosh-secrets.yml
+                    bosh upload stemcell stemcell.tgz --skip-if-exists
+
+                    stemcell_index=$((stemcell_index + 1))
+                  done
+
+        - task: update-cloud-config
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/bosh-cli
+            inputs:
+              - name: cloud-config
+              - name: bosh-secrets
+              - name: paas-cf
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  ./paas-cf/concourse/scripts/bosh_login.sh {{bosh_fqdn}} bosh-secrets/bosh-secrets.yml
+                  bosh update cloud-config cloud-config/cloud-config.yml
+
+      - task: cf-deploy
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/bosh-cli
+          inputs:
+            - name: cf-release
+            - name: paas-cf
+            - name: cf-manifest
+            - name: bosh-secrets
+          outputs:
+            - name: updated-cf-manifest
+          run:
+            path: sh
+            args:
+              - -e
+              - -c
+              - |
+                ./paas-cf/concourse/scripts/bosh_login.sh {{bosh_fqdn}} bosh-secrets/bosh-secrets.yml
+                sed -e "s/^director_uuid:.*/director_uuid: $(bosh status --uuid)/" < cf-manifest/cf-manifest.yml > updated-cf-manifest/cf-manifest.yml
+                bosh deployment updated-cf-manifest/cf-manifest.yml
+                bosh -n deploy
+
+      - put: cf-manifest
+        params:
+          file: updated-cf-manifest/cf-manifest.yml
+
+      - task: retrieve-config
+        config:
+          platform: linux
+          inputs:
+            - name: paas-cf
+            - name: cf-secrets
+            - name: cf-manifest
+            - name: cf-tfstate
+          outputs:
+            - name: config
+          params:
+          image_resource:
+            type: docker-image
+            source:
+              repository: ruby
+              tag: 2.2-slim
+          run:
+            path: sh
+            args:
+              - -e
+              - -c
+              - |
+                VAL_FROM_YAML=$(pwd)/paas-cf/concourse/scripts/val_from_yaml.rb
+
+                ./paas-cf/concourse/scripts/extract_terraform_state_to_yaml.rb \
+                  < cf-tfstate/cf.tfstate \
+                  > cf-terraform-outputs.yml
+
+                CF_ADMIN=admin
+                CF_PASS=$($VAL_FROM_YAML secrets.uaa_admin_password cf-secrets/cf-secrets.yml)
+                FIREHOSE_USER=graphite-nozzle
+                FIREHOSE_PASS=$($VAL_FROM_YAML secrets.uaa_clients_firehose_password cf-secrets/cf-secrets.yml)
+                API_ENDPOINT=$($VAL_FROM_YAML properties.cc.srv_api_uri cf-manifest/cf-manifest.yml)
+                UAA_ENDPOINT=$($VAL_FROM_YAML properties.uaa.url cf-manifest/cf-manifest.yml)
+                DOPPLER_ENDPOINT=$($VAL_FROM_YAML properties.loggregator.traffic_controller_url cf-manifest/cf-manifest.yml)
+                GRAPHITE_SERVER=$($VAL_FROM_YAML jobs.graphite.networks.cf.static_ips.0 cf-manifest/cf-manifest.yml)
+                RDS_BROKER_SERVER=$($VAL_FROM_YAML terraform_outputs.rds_broker_elb_dns_name cf-terraform-outputs.yml)
+                RDS_BROKER_PASS=$($VAL_FROM_YAML secrets.rds_broker_admin_password cf-secrets/cf-secrets.yml)
+
+                for var_name in CF_ADMIN CF_PASS FIREHOSE_USER FIREHOSE_PASS API_ENDPOINT UAA_ENDPOINT DOPPLER_ENDPOINT GRAPHITE_SERVER RDS_BROKER_SERVER RDS_BROKER_PASS; do
+                  echo export "${var_name}"=\"$(eval echo \$${var_name})\"
+                done > config/config.sh
+
+                paas-cf/scripts/job_instances.rb cf-manifest/cf-manifest.yml \
+                  > config/job_instances.tfvars
+
+                ls -l config/*
+
+      - aggregate:
+        - task: create-admin-org-space
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-cli
+            inputs:
+              - name: paas-cf
+              - name: config
+              - name: bosh-CA
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+                  . ./config/config.sh
+                  echo | cf login -a ${API_ENDPOINT} -u ${CF_ADMIN} -p ${CF_PASS}
+                  echo | cf create-org admin
+                  cf create-space admin -o admin
+
+        - task: register-rds-broker
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-cli
+            inputs:
+              - name: paas-cf
+              - name: config
+              - name: bosh-CA
+            run:
+              path: sh
+              args:
+                - -e
+                - -u
+                - -c
+                - |
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+                  . ./config/config.sh
+                  echo | cf login -a ${API_ENDPOINT} -u ${CF_ADMIN} -p ${CF_PASS}
+
+                  if cf service-brokers | grep "rds-broker\s"; then
+                    cf update-service-broker rds-broker rds-broker $RDS_BROKER_PASS https://$RDS_BROKER_SERVER
+                  else
+                    cf create-service-broker rds-broker rds-broker $RDS_BROKER_PASS https://$RDS_BROKER_SERVER
+                  fi
+                  cf enable-service-access postgres
+
+        - task: set-security-groups-from-manifest
+          config:
+            platform: linux
+            inputs:
+              - name: paas-cf
+              - name: bosh-CA
+              - name: config
+              - name: cf-manifest
+            params:
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-cli
+            run:
+              path: sh
+              args:
+                - -e
+                - -u
+                - -c
+                - |
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+                  . ./config/config.sh
+                  echo | cf login -a "${API_ENDPOINT}" -u "${CF_ADMIN}" -p "${CF_PASS}"
+
+                  ./paas-cf/concourse/scripts/set_security_groups_from_manifest.rb cf-manifest/cf-manifest.yml
+
+        - task: set-quotas-from-manifest
+          config:
+            platform: linux
+            inputs:
+              - name: paas-cf
+              - name: bosh-CA
+              - name: config
+              - name: cf-manifest
+            params:
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-cli
+            run:
+              path: sh
+              args:
+                - -e
+                - -u
+                - -c
+                - |
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+                  . ./config/config.sh
+
+                  echo | cf login -a "${API_ENDPOINT}" -u "${CF_ADMIN}" -p "${CF_PASS}"
+
+                  ./paas-cf/concourse/scripts/set_quotas_from_manifest.rb cf-manifest/cf-manifest.yml
+
+      - aggregate:
+        - task: sync-admin-users
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: ruby
+                tag: "2.2"
+            inputs:
+              - name: paas-cf
+              - name: config
+              - name: cf-secrets
+              - name: cf-manifest
+              - name: bosh-CA
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  {{disable_user_creation}} && echo "WARNING: Admin user creation disabled in this environment!" && exit 0
+
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+
+                  . ./config/config.sh
+
+                  VAL_FROM_YAML=$(pwd)/paas-cf/concourse/scripts/val_from_yaml.rb
+                  export UAA_CLIENT_SECRET
+                  UAA_CLIENT_SECRET=$($VAL_FROM_YAML secrets.uaa_admin_client_secret cf-secrets/cf-secrets.yml)
+                  cd paas-cf/scripts
+                  bundle
+                  bundle exec sync-admin-users.rb ${API_ENDPOINT} ../config/admin_users.yml "{{NEW_ACCOUNT_EMAIL_ADDRESS}}"
+
+        - task: deploy-graphite-nozzle
+          config:
+            platform: linux
+            inputs:
+              - name: paas-cf
+              - name: graphite-nozzle
+              - name: config
+              - name: bosh-CA
+            params:
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-cli
+            run:
+              path: sh
+              args:
+                - -e
+                - -u
+                - -c
+                - |
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+
+                  . ./config/config.sh
+                  cf login -a ${API_ENDPOINT} -u ${CF_ADMIN} -p ${CF_PASS} \
+                    -o admin -s admin
+
+                  cf target -o admin -s admin
+
+                  cat <<EOF > graphite-nozzle.json
+                  [
+                      {"protocol":"udp","destination":"${GRAPHITE_SERVER}","ports":"8125"}
+                  ]
+                  EOF
+                  cf create-security-group graphite-nozzle graphite-nozzle.json
+                  cf bind-security-group graphite-nozzle admin admin
+
+                  cd graphite-nozzle
+
+                  echo "web: graphite-nozzle" > Procfile
+
+                  cat <<EOF > manifest.yml
+                  ---
+                  applications:
+                  - name: graphite-nozzle
+                    memory: 100M
+                    instances: 1
+                    no-route: true
+                    health-check-type: none
+                    buildpack: go_buildpack
+                    env:
+                      DOPPLER_ENDPOINT: "${DOPPLER_ENDPOINT}"
+                      UAA_ENDPOINT: "${UAA_ENDPOINT}"
+                      STATSD_ENDPOINT: "${GRAPHITE_SERVER}:8125"
+                      FIREHOSE_USERNAME: "${FIREHOSE_USER}"
+                      FIREHOSE_PASSWORD: "${FIREHOSE_PASS}"
+                      SUBSCRIPTION_ID: "firehose"
+                      STATSD_PREFIX: "cfstats."
+                      SKIP_SSL_VALIDATION: "true"
+                      PREFIX_JOB: "true"
+                  EOF
+
+                  ../paas-cf/concourse/scripts/cf_push_on_git_change.sh graphite-nozzle
+
+        - task: update-kibana-timezone
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: ruby
+                tag: 2.2-slim
+            params:
+              SYSTEM_DNS_ZONE_NAME: {{system_dns_zone_name}}
+              DEPLOY_ENV: {{deploy_env}}
+            inputs:
+            - name: paas-cf
+            - name: cf-tfstate
+            run:
+              path: sh
+              args:
+              - -e
+              - -c
+              - |
+                SCRIPT_DIR="./paas-cf/concourse/scripts"
+
+                ruby "${SCRIPT_DIR}/extract_terraform_state_to_yaml.rb" \
+                  < cf-tfstate/cf.tfstate \
+                  > cf-tfstate.yaml
+
+                export ES_HOST
+                ES_HOST=$(ruby "${SCRIPT_DIR}/val_from_yaml.rb" terraform_outputs.logsearch_elastic_master_elb_dns_name cf-tfstate.yaml)
+                export ES_PORT="9200"
+                ruby "${SCRIPT_DIR}/kibana_set_utc.rb"
+
+        - task: enable-elasticsearch-shard-reallocation
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/curl-ssl
+            inputs:
+            - name: paas-cf
+            - name: cf-terraform-outputs
+            run:
+              path: sh
+              args:
+              - -e
+              - -c
+              - |
+                export TF_VAR_logsearch_elastic_master_elb_dns_name
+                . cf-terraform-outputs/cf.tfstate.sh
+
+                curl -s \
+                  -X PUT \
+                  -d '{"transient":{"cluster.routing.allocation.enable":"all"}}' \
+                  "${TF_VAR_logsearch_elastic_master_elb_dns_name}:9200/_cluster/settings"
+
+        - task: deploy-healthcheck
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-cli
+            params:
+              DISABLE_HEALTHCHECK_DB: {{disable_healthcheck_db}}
+            inputs:
+              - name: paas-cf
+              - name: config
+              - name: bosh-CA
+            outputs:
+              - name: deployed-healthcheck
+            run:
+              path: sh
+              args:
+                - -e
+                - -u
+                - -c
+                - |
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+
+                  . ./config/config.sh
+                  echo | cf login -a ${API_ENDPOINT} -u ${CF_ADMIN} -p ${CF_PASS}
+                  cf create-org testers
+                  cf set-quota testers test_apps
+                  cf create-space healthcheck -o testers
+                  cf target -o testers -s healthcheck
+                  BUILD_ROOT=$(pwd)
+                  cd paas-cf/platform-tests/example-apps/healthcheck
+
+                  if  [ "${DISABLE_HEALTHCHECK_DB:-}" != "true" ] ; then
+                    cf create-service postgres Free healthcheck-db
+                    while ! cf service healthcheck-db | grep -q 'Status: create succeeded'; do
+                      echo "Waiting for creation of service to complete..."
+                      sleep 30
+                    done
+
+                    ruby -ryaml -e '
+                      manifest = YAML.load_file("manifest.yml")
+                      manifest["applications"].each { |app| app["services"] = ["healthcheck-db"] }
+                      File.write("manifest.yml", manifest.to_yaml)
+                    '
+                  fi
+
+                  cf blue-green-deploy healthcheck
+                  cf delete -f healthcheck-old
+
+                  cd $BUILD_ROOT
+                  echo "yes" > deployed-healthcheck/healthcheck-deployed
+          on_success:
+            put: deployed-healthcheck
+            params:
+              file: deployed-healthcheck/healthcheck-deployed
+
+        - task: run-bosh-cleanup
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/bosh-cli
+            inputs:
+              - name: paas-cf
+              - name: bosh-secrets
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  ./paas-cf/concourse/scripts/bosh_login.sh {{bosh_fqdn}} bosh-secrets/bosh-secrets.yml
+
+                  bosh cleanup --all
+
+        - do:
+          - task: datadog-terraform-apply
+            config:
+              platform: linux
+              image_resource:
+                type: docker-image
+                source:
+                  repository: governmentpaas/terraform
+              inputs:
+                - name: datadog-tfstate
+                - name: paas-cf
+                - name: config
+              outputs:
+                - name: updated-tfstate
+              params:
+                TF_VAR_env: {{deploy_env}}
+                TF_VAR_datadog_api_key: {{datadog_api_key}}
+                TF_VAR_datadog_app_key: {{datadog_app_key}}
+                TF_VAR_aws_account: {{aws_account}}
+                ENABLE_DATADOG: {{enable_datadog}}
+              run:
+                path: sh
+                args:
+                  - -e
+                  - -c
+                  - |
+                    if [ -n "${TF_VAR_datadog_api_key}" ] && [ -n "${TF_VAR_datadog_app_key}" ] && [ "${ENABLE_DATADOG}" = "false" ]; then
+                      echo "Datadog disabled but keys present, running check cleanup..."
+                      terraform destroy -force \
+                         -state=datadog-tfstate/datadog.tfstate \
+                         -state-out=updated-tfstate/datadog.tfstate \
+                         -var-file=paas-cf/terraform/${TF_VAR_aws_account}.tfvars \
+                         paas-cf/terraform/datadog
+                      exit 0
+                    fi
+
+                    if [ "${ENABLE_DATADOG}" = "true" ]; then
+                      terraform apply \
+                        -var-file=paas-cf/terraform/{{aws_account}}.tfvars \
+                        -state=datadog-tfstate/datadog.tfstate -state-out=updated-tfstate/datadog.tfstate \
+                        -var-file=config/job_instances.tfvars paas-cf/terraform/datadog
+                    else
+                      echo "Datadog disabled, skipping terraform run..."
+                      cp datadog-tfstate/datadog.tfstate updated-tfstate/datadog.tfstate
+                    fi
+            ensure:
+              put: datadog-tfstate
+              params:
+                file: updated-tfstate/datadog.tfstate
+
+          - task: datadog-apply-attributes
+            config:
+              platform: linux
+              image_resource:
+                type: docker-image
+                source:
+                  repository: ruby
+                  tag: 2.2-alpine
+              inputs:
+                - name: datadog-tfstate
+                - name: paas-cf
+              params:
+                TF_VAR_env: {{deploy_env}}
+                TF_VAR_datadog_api_key: {{datadog_api_key}}
+                TF_VAR_datadog_app_key: {{datadog_app_key}}
+                TF_VAR_aws_account: {{aws_account}}
+                ENABLE_DATADOG: {{enable_datadog}}
+              run:
+                path: sh
+                args:
+                  - -e
+                  - -c
+                  - |
+                    # FIXME: Remove this task when https://github.com/zorkian/go-datadog-api/issues/56 is fixed
+                    if [ "${ENABLE_DATADOG}" = "true" ]; then
+                      BUNDLE_GEMFILE=paas-cf/Gemfile bundle install --without=default
+                      echo "Applying require_full_window atributes for monitors that set it to false..."
+                      echo
+                      paas-cf/concourse/scripts/update_monitor_options.rb < datadog-tfstate/datadog.tfstate
+                      echo
+                      echo "Done"
+                    else
+                      echo "Datadog disabled, skipping attribute applying..."
+                    fi
+
+        - task: deploy-paas-dashboard
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-cli
+            inputs:
+              - name: paas-cf
+              - name: config
+              - name: bosh-CA
+            params:
+              ENABLE_PAAS_DASHBOARD: {{enable_paas_dashboard}}
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  if [ "${ENABLE_PAAS_DASHBOARD}" != "true" ]; then
+                    echo PaaS dashboard application disabled
+                    exit 0
+                  fi
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+                  . ./config/config.sh
+                  cf login -a ${API_ENDPOINT} -u ${CF_ADMIN} -p ${CF_PASS} \
+                    -o admin -s admin
+                  cd paas-cf/tools/paas_dashboard
+                  cf push --no-start paas-dashboard
+                  echo Setting DD_API_KEY...
+                  cf set-env paas-dashboard DD_API_KEY {{datadog_api_key}} > /dev/null
+                  echo Setting DD_APP_KEY...
+                  cf set-env paas-dashboard DD_APP_KEY {{datadog_app_key}} > /dev/null
+                  cf start paas-dashboard
+
+        - task: deploy-paas-roadmap
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-cli
+            inputs:
+              - name: paas-roadmap
+              - name: paas-cf
+              - name: config
+              - name: bosh-CA
+            params:
+              DEPLOY_ROADMAP: {{deploy_roadmap}}
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  if [ "${DEPLOY_ROADMAP}" != "true" ]; then
+                    echo Roadmap disabled
+                    exit 0
+                  fi
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+                  . ./config/config.sh
+                  cf login -a ${API_ENDPOINT} -u ${CF_ADMIN} -p ${CF_PASS} \
+                    -o admin -s admin
+                  cd paas-roadmap
+                  cf push paas-roadmap
+
+        - task: deploy-rubbernecker
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-cli
+            inputs:
+              - name: paas-cf
+              - name: config
+              - name: bosh-CA
+              - name: paas-rubbernecker
+            params:
+              DEPLOY_RUBBERNECKER: {{deploy_rubbernecker}}
+              PIVOTAL_PROJECT_ID: {{pivotal_project_id}}
+              TRACKER_TOKEN: {{tracker_token}}
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  if [ "${DEPLOY_RUBBERNECKER}" != "true" ]; then
+                    echo Rubbernecker disabled
+                    exit 0
+                  fi
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+                  . ./config/config.sh
+                  cf login -a ${API_ENDPOINT} -u ${CF_ADMIN} -p ${CF_PASS} \
+                    -o admin -s admin
+
+                  cf push --no-start -p paas-rubbernecker -f paas-rubbernecker/manifest.yml
+                  echo Setting PIVOTAL_API_KEY...
+                  cf set-env rubbernecker PIVOTAL_API_KEY ${TRACKER_TOKEN} > /dev/null
+                  echo Setting PIVOTAL_PROJECT_ID...
+                  cf set-env rubbernecker PIVOTAL_PROJECT_ID ${PIVOTAL_PROJECT_ID}
+                  cf start rubbernecker
+
+  - name: smoke-tests
+    serial_groups: [smoke-tests]
+    plan:
+      - aggregate:
+          - get: pipeline-trigger
+            passed: ['cf-deploy','availability-tests']
+            trigger: true
+          - get: cf-release
+            params:
+              submodules:
+                - src/smoke-tests
+            passed: ['cf-deploy']
+          - get: paas-cf
+            passed: ['cf-deploy','availability-tests']
+          - get: cf-manifest
+            passed: ['cf-deploy']
+          - get: bosh-CA
+          - get: cf-secrets
+            passed: ['cf-deploy']
+
+      - do:
+        - task: create-temp-user
+          file: paas-cf/concourse/tasks/create_admin.yml
+          params:
+            PREFIX: smoketest-user
+
+        - task: smoke-tests-config
+          file: paas-cf/concourse/tasks/smoke-tests-config.yml
+
+        - task: smoke-tests-run
+          file: paas-cf/concourse/tasks/smoke-tests-run.yml
+          ensure:
+            task: upload-test-artifacts
+            file: paas-cf/concourse/tasks/upload-test-artifacts.yml
+            params:
+              TEST_ARTIFACTS_BUCKET: {{test_artifacts_bucket}}
+
+        ensure:
+          task: remove-temp-user
+          file: paas-cf/concourse/tasks/delete_admin.yml
+
+  - name: acceptance-tests
+    plan:
+      - aggregate:
+          - get: pipeline-trigger
+            passed: ['cf-deploy','availability-tests']
+            trigger: true
+          - get: cf-release
+            params:
+              submodules:
+                - src/github.com/cloudfoundry/cf-acceptance-tests
+            passed: ['cf-deploy']
+          - get: paas-cf
+            passed: ['cf-deploy','availability-tests']
+          - get: cf-manifest
+            passed: ['cf-deploy']
+          - get: bosh-CA
+          - get: cf-secrets
+            passed: ['cf-deploy']
+
+      - do:
+        - task: create-temp-user
+          file: paas-cf/concourse/tasks/create_admin.yml
+          params:
+            PREFIX: acceptance-test-user
+            DISABLE_ADMIN_USER_CREATION: {{disable_cf_acceptance_tests}}
+
+        - task: generate-test-config
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/bosh-cli
+            inputs:
+              - name: cf-release
+              - name: paas-cf
+              - name: cf-manifest
+              - name: admin-creds
+            outputs:
+              - name: test-config
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  ruby -e "require 'yaml'
+
+                  my = {'properties' => {'acceptance_tests' => YAML.load_file('cf-manifest/cf-manifest.yml')['properties']['acceptance_tests']}}
+                  my['properties']['acceptance_tests']['user'] = File.read('admin-creds/username').strip()
+                  my['properties']['acceptance_tests']['password'] = File.read('admin-creds/password').strip()
+
+                  puts YAML.dump(my)" > acceptance_test_properties.yml
+
+                  ./paas-cf/platform-tests/bosh-template-renderer/render.rb \
+                    ./cf-release/jobs/acceptance-tests/templates/run.erb \
+                    ./cf-release/jobs/acceptance-tests/spec \
+                    acceptance_test_properties.yml \
+                      > ./test-config/run
+
+                  chmod +x ./test-config/run
+
+                  ./paas-cf/platform-tests/bosh-template-renderer/render.rb \
+                    ./cf-release/jobs/acceptance-tests/templates/config.json.erb \
+                    ./cf-release/jobs/acceptance-tests/spec \
+                    acceptance_test_properties.yml \
+                      > ./test-config/config.json
+
+        - task: run-tests
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-acceptance-tests
+            params:
+              DISABLE_CF_ACCEPTANCE_TESTS: {{disable_cf_acceptance_tests}}
+            inputs:
+              - name: paas-cf
+              - name: cf-release
+              - name: cf-manifest
+              - name: test-config
+              - name: bosh-CA
+            outputs:
+              - name: artifacts
+            run:
+              path: bash
+              args:
+                - -e
+                - -c
+                - |
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+                  mkdir -p /var/vcap/sys
+                  ln -s $(pwd)/artifacts /var/vcap/sys/log
+                  mkdir -p /var/vcap/jobs/acceptance-tests/bin/ /var/vcap/packages/acceptance-tests/src/github.com/cloudfoundry
+                  ln -snf $(pwd)/test-config/config.json /var/vcap/jobs/acceptance-tests/bin/config.json
+                  ln -snf $(pwd)/test-config/run /var/vcap/jobs/acceptance-tests/bin/run
+                  ln -snf /usr/local/go /var/vcap/packages/golang1.7
+                  ln -snf $(pwd)/cf-release/src/github.com/cloudfoundry/cf-acceptance-tests /var/vcap/packages/acceptance-tests/src/github.com/cloudfoundry/
+                  if  [ "${DISABLE_CF_ACCEPTANCE_TESTS:-}" = "true" ]; then
+                    echo "WARNING: The acceptance tests have been disabled. Unset DISABLE_CF_ACCEPTANCE_TESTS when uploading the pipelines to enable them. You can still hijack this container to run them manually, but you must update the admin user in ./test-config/config.json."
+                  else
+                    SLEEPTIME=90
+                    echo "Sleeping for ${SLEEPTIME} seconds..."
+                    for i in $(seq $SLEEPTIME); do echo -ne "$i"'\r'; sleep 1; done; echo
+                    /var/vcap/jobs/acceptance-tests/bin/run
+                  fi
+
+          ensure:
+            task: upload-test-artifacts
+            file: paas-cf/concourse/tasks/upload-test-artifacts.yml
+            params:
+              TEST_ARTIFACTS_BUCKET: {{test_artifacts_bucket}}
+
+        ensure:
+          task: remove-temp-user
+          file: paas-cf/concourse/tasks/delete_admin.yml
+          params:
+            DISABLE_ADMIN_USER_CREATION: {{disable_cf_acceptance_tests}}
+
+  - name: custom-acceptance-tests
+    plan:
+      - aggregate:
+          - get: pipeline-trigger
+            passed: ['cf-deploy','availability-tests']
+            trigger: true
+          - get: paas-cf
+            passed: ['cf-deploy','availability-tests']
+          - get: cf-manifest
+            passed: ['cf-deploy']
+          - get: bosh-CA
+          - get: cf-secrets
+            passed: ['cf-deploy']
+
+      - do:
+        - task: create-temp-user
+          file: paas-cf/concourse/tasks/create_admin.yml
+          params:
+            PREFIX: custom-acceptance-test-user
+            DISABLE_ADMIN_USER_CREATION: {{disable_custom_acceptance_tests}}
+
+        - task: generate-test-config
+          file: paas-cf/concourse/tasks/generate-test-config.yml
+
+        - task: "Run custom acceptance tests"
+          file: paas-cf/concourse/tasks/custom-acceptance-tests-run.yml
+          params:
+            DISABLE_CUSTOM_ACCEPTANCE_TESTS: {{disable_custom_acceptance_tests}}
+            DEPLOY_ENV: {{deploy_env}}
+            AWS_REGION: {{aws_region}}
+
+          ensure:
+            task: upload-test-artifacts
+            file: paas-cf/concourse/tasks/upload-test-artifacts.yml
+            params:
+              TEST_ARTIFACTS_BUCKET: {{test_artifacts_bucket}}
+
+        ensure:
+          task: remove-temp-user
+          file: paas-cf/concourse/tasks/delete_admin.yml
+          params:
+            DISABLE_ADMIN_USER_CREATION: {{disable_custom_acceptance_tests}}
+
+  - name: bosh-tests
+    plan:
+      - aggregate:
+          - get: pipeline-trigger
+            passed: ['cf-deploy','availability-tests']
+            trigger: true
+          - get: paas-cf
+            passed: ['cf-deploy','availability-tests']
+          - get: cf-manifest
+          - get: bosh-secrets
+      - task: test-bosh-cli
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: ruby
+              tag: "2.2"
+          params:
+            SYSTEM_DNS_ZONE_NAME: {{system_dns_zone_name}}
+            DEPLOY_ENV: {{deploy_env}}
+            CONCOURSE_ATC_PASSWORD: {{concourse_atc_password}}
+          inputs:
+          - name: paas-cf
+          run:
+            path: sh
+            args:
+            - -e
+            - -c
+            - |
+              echo Looking for non running VMs
+              ./paas-cf/concourse/scripts/bosh-cli.sh bosh status
+      - task: test-bosh-vms
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/bosh-cli
+          inputs:
+          - name: paas-cf
+          - name: cf-manifest
+          - name: bosh-secrets
+          run:
+            path: sh
+            args:
+            - -e
+            - -c
+            - |
+              ./paas-cf/concourse/scripts/bosh_login.sh {{bosh_fqdn}} bosh-secrets/bosh-secrets.yml
+              bosh deployment cf-manifest/cf-manifest.yml
+              bosh vms {{deploy_env}} | tee vms.txt
+              [ $(grep '|' vms.txt | grep -cEv "(\-\-|VM|running)") -eq 0 ]
+
+  - name: performance-tests
+    plan:
+      - aggregate:
+          - get: pipeline-trigger
+            passed: ['smoke-tests', 'acceptance-tests', 'custom-acceptance-tests', 'bosh-tests']
+            trigger: true
+          - get: paas-cf
+            passed: ['smoke-tests', 'acceptance-tests', 'custom-acceptance-tests', 'bosh-tests']
+          - get: cf-manifest
+            passed: ['smoke-tests', 'acceptance-tests', 'custom-acceptance-tests']
+          - get: bosh-CA
+          - get: cf-secrets
+            passed: ['smoke-tests', 'acceptance-tests', 'custom-acceptance-tests']
+
+      - do:
+        - task: create-temp-user
+          file: paas-cf/concourse/tasks/create_admin.yml
+          params:
+            PREFIX: performance-tests-user
+
+        - task: generate-test-config
+          file: paas-cf/concourse/tasks/generate-test-config.yml
+
+        - task: run-tests
+          config:
+            platform: linux
+            image_resource:
+              type: docker-image
+              source:
+                repository: governmentpaas/cf-acceptance-tests
+            inputs:
+              - name: paas-cf
+              - name: test-config
+              - name: bosh-CA
+            run:
+              path: sh
+              args:
+                - -e
+                - -c
+                - |
+                  ./paas-cf/concourse/scripts/import_bosh_ca.sh
+
+                  echo "Running tests"
+                  export CONFIG
+                  CONFIG="$(pwd)/test-config/config.json"
+                  ./paas-cf/platform-tests/run_tests.sh ./paas-cf/platform-tests/src/performance/
+
+        ensure:
+          task: remove-temp-user
+          file: paas-cf/concourse/tasks/delete_admin.yml
+
+  - name: tag-release
+    plan:
+      - aggregate:
+          - get: pipeline-trigger
+            passed: ['performance-tests']
+            trigger: true
+          - get: paas-cf
+            passed: ['performance-tests']
+          - get: git-keys
+
+      - put: release-version
+        params: {bump: patch}
+
+      - task: tag-release
+        config:
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/git-ssh
+          platform: linux
+          params:
+            aws_account: {{aws_account}}
+            deploy_env: {{deploy_env}}
+            TAG_PREFIX: {{TAG_PREFIX}}
+            TAG_FILTER: {{paas_cf_tag_filter}}
+          inputs:
+          - name: paas-cf
+          - name: release-version
+          - name: git-keys
+          run:
+            path: sh
+            args:
+            - -e
+            - -c
+            - |
+              if [ -z "${TAG_PREFIX}" ]; then
+                echo \$TAG_PREFIX not set, skipping
+                exit 0
+              fi
+              paas-cf/concourse/scripts/tag_release.sh \
+                ${TAG_PREFIX} ${aws_account} ${deploy_env} ${TAG_FILTER}
+
+  - name: pipeline-unlock
+    serial: true
+    plan:
+      - get: pipeline-trigger
+        passed: ['tag-release']
+        trigger: true
+      - get: pipeline-pool
+      - task: update-datadog
+        config:
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/git-ssh
+          platform: linux
+          params:
+            DATADOG_API_KEY: {{datadog_api_key}}
+            ENV: {{deploy_env}}
+            AWS_ACCOUNT: {{aws_account}}
+            ENABLE_DATADOG: {{enable_datadog}}
+            PIPELINE_NAME: {{pipeline_name}}
+          inputs:
+          - name: pipeline-pool
+          run:
+            path: sh
+            args:
+            - -e
+            - -c
+            - |
+              cd pipeline-pool
+              current_time=$(date +%s)
+              lock_time=$(git log -1  --pretty=format:'%ct')
+              delta=$((current_time - lock_time))
+              echo "Total pipeline time was: ${delta}s"
+
+              if [ "${ENABLE_DATADOG}" = "true" ]; then
+                curl  -X POST -H "Content-type: application/json" \
+                  -d "{ \"series\" :
+                         [{\"metric\":\"concourse.pipeline_time\",
+                          \"points\":[[$current_time, ${delta}]],
+                          \"type\":\"gauge\",
+                          \"tags\":[
+                            \"deploy_env:${ENV}\",
+                            \"pipeline_name:${PIPELINE_NAME}\",
+                            \"aws_account:${AWS_ACCOUNT}\"
+                          ]}
+                        ]
+                    }" \
+                  "https://app.datadoghq.com/api/v1/series?api_key=${DATADOG_API_KEY}"
+              fi
+      - try:
+          task: unlock-the-pipeline
+          config:
+            image_resource:
+              type: docker-image
+              source:
+                repository: alpine
+                tag: "3.4"
+            platform: linux
+            params:
+              DISABLE_PIPELINE_LOCKING: {{disable_pipeline_locking}}
+            run:
+              path: sh
+              args:
+              - -e
+              - -c
+              - |
+                if [ "${DISABLE_PIPELINE_LOCKING:-}" = "true" ] ; then
+                   echo "Pipeline locking is disabled, this task will fail and this is OK."
+                   exit 1
+                fi
+          on_success:
+            put: pipeline-pool
+            params:
+              release: pipeline-pool
+
+  - name: pipeline-check-lock
+    plan:
+      - get: pipeline-pool
+      - task: print-pipeline-lock-state
+        config:
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/git-ssh
+          platform: linux
+          inputs:
+          - name: pipeline-pool
+          run:
+            path: sh
+            args:
+            - -e
+            - -c
+            - |
+              if [ -f pipeline-pool/{{pipeline_name}}/claimed/lock ]; then
+                current_status_message="LOCKED"
+              elif [ -f pipeline-pool/{{pipeline_name}}/unclaimed/lock ]; then
+                current_status_message="UNLOCKED"
+              else
+                echo "Error: Cannot find lock in pool: pipeline-pool/{{pipeline_name}}/{un,}claimed/lock"
+                exit 1
+              fi
+
+              cd pipeline-pool
+              export GIT_PAGER="cat"
+              git log -1 --pretty=format:"
+              Lock status is: ${current_status_message}
+
+              Last commit change:
+               - %cr at %ci
+               - %s
+              "
+
+  - name: pipeline-release-lock
+    plan:
+      - get: pipeline-pool
+      - put: pipeline-pool
+        params:
+          release: pipeline-pool
+
+  - name: generate-git-keys
+    plan:
+      - task: ssh-keygen
+        config:
+          image_resource:
+            type: docker-image
+            source:
+              repository: governmentpaas/git-ssh
+          platform: linux
+          outputs:
+          - name: generated-git-keys
+          run:
+            path: sh
+            args:
+            - -e
+            - -c
+            - |
+              ssh-keygen -t rsa -b 4096 -f git-key -N ''
+              tar -cvzf generated-git-keys/git-keys.tar.gz ./git-key ./git-key.pub
+              cat ./git-key.pub
+        on_success:
+          put: git-keys
+          params:
+            file: generated-git-keys/git-keys.tar.gz
+
+  - name: bump-major-version
+    plan:
+      - put: release-version
+        params: {bump: major}
+
+  - name: bump-minor-version
+    plan:
+      - put: release-version
+        params: {bump: minor}
+
+  - name: bump-patch-version
+    plan:
+      - put: release-version
+        params: {bump: patch}
+
+  - name: show-release-version
+    plan:
+      - get: release-version
+
+      - task: show-release-version
+        config:
+          platform: linux
+          inputs:
+            - name: release-version
+          run:
+            path: cat
+            args:
+            - release-version/number
+
+  - name: continuous-smoke-tests
+    serial_groups: [smoke-tests]
+    build_logs_to_retain: 10000
+    plan:
+      - aggregate:
+        - get: cf-release
+          params:
+            submodules:
+              - src/smoke-tests
+          passed: ['cf-deploy']
+        - get: paas-cf
+          passed: ['cf-deploy']
+        - get: cf-manifest
+          passed: ['cf-deploy']
+        - get: bosh-CA
+        - get: smoke-tests-timer
+          trigger: {{continuous_smoke_tests_trigger}}
+        - get: cf-secrets
+          passed: ['cf-deploy']
+
+      - do:
+        - task: create-temp-user
+          file: paas-cf/concourse/tasks/create_admin.yml
+          params:
+            PREFIX: cont-smoketest-user
+
+        - task: smoke-tests-config
+          file: paas-cf/concourse/tasks/smoke-tests-config.yml
+
+        - task: smoke-tests-run
+          file: paas-cf/concourse/tasks/smoke-tests-run.yml
+          on_failure:
+            task: alert
+            config:
+              platform: linux
+              image_resource:
+                type: docker-image
+                source:
+                  repository: governmentpaas/awscli
+              params:
+                AWS_DEFAULT_REGION: {{aws_region}}
+                DEPLOY_ENV: {{deploy_env}}
+                SYSTEM_DNS_ZONE_NAME: {{system_dns_zone_name}}
+                ALERT_EMAIL_ADDRESS: {{ALERT_EMAIL_ADDRESS}}
+              inputs:
+                - name: paas-cf
+              run:
+                path: sh
+                args:
+                - -e
+                - -c
+                - |
+                  paas-cf/concourse/scripts/smoke_tests_email.sh \
+                    ${DEPLOY_ENV} ${SYSTEM_DNS_ZONE_NAME} ${ALERT_EMAIL_ADDRESS}
+          ensure:
+            task: upload-test-artifacts
+            file: paas-cf/concourse/tasks/upload-test-artifacts.yml
+            params:
+              TEST_ARTIFACTS_BUCKET: {{test_artifacts_bucket}}
+
+        ensure:
+          task: remove-temp-user
+          file: paas-cf/concourse/tasks/delete_admin.yml
+
+  - name: bosh-cli
+    plan:
+      - aggregate:
+          - get: paas-cf
+          - get: bosh-secrets
+          - get: cf-manifest
+
+      - task: run-bosh-cli
+        config:
+          platform: linux
+          # FIXME: use image_resource once https://github.com/concourse/fly/issues/98 is implemented
+          image: docker:///governmentpaas/bosh-cli
+          inputs:
+            - name: paas-cf
+            - name: cf-manifest
+            - name: bosh-secrets
+          params:
+            SYSTEM_DNS_ZONE_NAME: {{system_dns_zone_name}}
+          run:
+            path: sh
+            args:
+            - -c
+            - -e
+            - |
+              ./paas-cf/concourse/scripts/bosh_login.sh bosh.${SYSTEM_DNS_ZONE_NAME} bosh-secrets/bosh-secrets.yml
+
+              uuid=$(bosh status --uuid)
+              sed -e "s/^director_uuid:.*$/director_uuid: ${uuid}/" cf-manifest/cf-manifest.yml > cf-manifest-with-uuid.yml
+              bosh deployment ./cf-manifest-with-uuid.yml

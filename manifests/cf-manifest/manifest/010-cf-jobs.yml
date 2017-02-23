@@ -1,0 +1,458 @@
+meta:
+  release:
+    name: cf
+
+  api_consul_services:
+    cloud_controller_ng: {}
+
+  api_templates:
+  - name: consul_agent
+    release: (( grab meta.consul_templates.consul_agent.release ))
+  - name: cloud_controller_ng
+    release: (( grab meta.release.name ))
+  - name: metron_agent
+    release: (( grab meta.release.name ))
+  - name: statsd-injector
+    release: (( grab meta.release.name ))
+  - name: java-buildpack
+    release: (( grab meta.release.name ))
+  - name: java-offline-buildpack
+    release: (( grab meta.release.name ))
+  - name: go-buildpack
+    release: (( grab meta.release.name ))
+  - name: binary-buildpack
+    release: (( grab meta.release.name ))
+  - name: nodejs-buildpack
+    release: (( grab meta.release.name ))
+  - name: ruby-buildpack
+    release: (( grab meta.release.name ))
+  - name: php-buildpack
+    release: (( grab meta.release.name ))
+  - name: python-buildpack
+    release: (( grab meta.release.name ))
+  - name: staticfile-buildpack
+    release: (( grab meta.release.name ))
+  - name: datadog-consul
+    release: datadog-for-cloudfoundry
+  - name: datadog-cc
+    release: datadog-for-cloudfoundry
+
+  api_worker_templates:
+  - name: consul_agent
+    release: (( grab meta.consul_templates.consul_agent.release ))
+  - name: cloud_controller_worker
+    release: (( grab meta.release.name ))
+  - name: metron_agent
+    release: (( grab meta.release.name ))
+  - name: datadog-consul
+    release: datadog-for-cloudfoundry
+  - name: datadog-cc-worker
+    release: datadog-for-cloudfoundry
+
+  clock_templates:
+  - name: consul_agent
+    release: (( grab meta.release.name ))
+  - name: datadog-consul
+    release: datadog-for-cloudfoundry
+  - name: cloud_controller_clock
+    release: (( grab meta.release.name ))
+  - name: metron_agent
+    release: (( grab meta.release.name ))
+
+  consul_templates:
+  - name: consul_agent
+    release: (( grab meta.release.name ))
+  - name: datadog-consul
+    release: datadog-for-cloudfoundry
+  - name: metron_agent
+    release: (( grab meta.release.name ))
+
+  etcd_templates:
+  - name: consul_agent
+    release: (( grab meta.release.name ))
+  - name: datadog-consul
+    release: datadog-for-cloudfoundry
+  - name: etcd
+    release: (( grab meta.release.name ))
+  - name: etcd_metrics_server
+    release: (( grab meta.release.name ))
+  - name: metron_agent
+    release: (( grab meta.release.name ))
+
+  loggregator_templates:
+  - name: consul_agent
+    release: (( grab meta.consul_templates.consul_agent.release ))
+  - name: datadog-consul
+    release: datadog-for-cloudfoundry
+  - name: doppler
+    release: (( grab meta.release.name ))
+  - name: syslog_drain_binder
+    release: (( grab meta.release.name ))
+  - name: metron_agent
+    release: (( grab meta.release.name ))
+
+  loggregator_trafficcontroller_templates:
+  - name: consul_agent
+    release: (( grab meta.consul_templates.consul_agent.release ))
+  - name: datadog-consul
+    release: datadog-for-cloudfoundry
+  - name: loggregator_trafficcontroller
+    release: (( grab meta.release.name ))
+  - name: metron_agent
+    release: (( grab meta.release.name ))
+
+  nats_templates:
+  - name: consul_agent
+    release: (( grab meta.consul_templates.consul_agent.release ))
+  - name: datadog-consul
+    release: datadog-for-cloudfoundry
+  - name: nats
+    consumes: {nats: nil}
+    release: (( grab meta.release.name ))
+  - name: nats_stream_forwarder
+    release: (( grab meta.release.name ))
+  - name: datadog-nats
+    release: datadog-for-cloudfoundry
+  - name: metron_agent
+    release: (( grab meta.release.name ))
+
+  router_templates:
+  - name: consul_agent
+    release: (( grab meta.consul_templates.consul_agent.release ))
+  - name: datadog-consul
+    release: datadog-for-cloudfoundry
+  - name: gorouter
+    release: (( grab meta.release.name ))
+  - name: metron_agent
+    release: (( grab meta.release.name ))
+  - name: haproxy
+    release: paas-haproxy
+  - name: datadog-router
+    release: datadog-for-cloudfoundry
+  - name: racoon
+    release: ipsec
+  - name: datadog-ipsec
+    release: datadog-for-cloudfoundry
+
+  uaa_templates:
+  - name: consul_agent
+    release: (( grab meta.consul_templates.consul_agent.release ))
+  - name: datadog-consul
+    release: datadog-for-cloudfoundry
+  - name: uaa
+    release: (( grab meta.release.name ))
+  - name: metron_agent
+    release: (( grab meta.release.name ))
+  - name: statsd-injector
+    release: (( grab meta.release.name ))
+
+jobs:
+  - name: consul
+    azs: [z1, z2, z3]
+    templates: (( grab meta.consul_templates ))
+    instances: 3
+    persistent_disk_type: consul
+    vm_type: small
+    stemcell: default
+    networks:
+      - name: cf
+        static_ips:
+          - 10.0.16.37
+          - 10.0.17.37
+          - 10.0.18.37
+    update:
+      serial: true
+    properties:
+      consul:
+        agent:
+          mode: server
+
+  - name: nats
+    azs: [z1, z2]
+    templates: (( grab meta.nats_templates ))
+    instances: 2
+    vm_type: medium
+    stemcell: default
+    networks:
+      - name: cf
+        static_ips:
+          - 10.0.16.11
+          - 10.0.17.11
+
+  - name: etcd
+    azs: [z1, z2, z3]
+    templates: (( grab meta.etcd_templates ))
+    instances: 3
+    persistent_disk_type: etcd
+    vm_type: medium
+    stemcell: default
+    networks:
+      - name: cf
+        static_ips:
+          - 10.0.16.19
+          - 10.0.17.19
+          - 10.0.18.19
+    update:
+      serial: true
+    properties:
+      consul:
+        agent:
+          services:
+            etcd: {}
+
+  - name: database
+    azs: [z1, z2]
+    templates:
+      - name: consul_agent
+        release: cf
+      - name: datadog-consul
+        release: datadog-for-cloudfoundry
+      - name: bbs
+        release: diego
+      - name: cfdot
+        release: diego
+      - name: metron_agent
+        release: cf
+    instances: 2
+    vm_type: medium
+    vm_extensions:
+      - cf_rds_client_sg
+    stemcell: default
+    networks:
+      - name: cf
+    update:
+      serial: true
+
+  - name: uaa
+    azs: [z1, z2]
+    templates: (( grab meta.uaa_templates ))
+    instances: 2
+    vm_type: medium
+    vm_extensions:
+      - cf_uaa_elb
+      - cf_rds_client_sg
+    stemcell: default
+    networks:
+      - name: cf
+    properties:
+      consul:
+        agent:
+          services:
+            uaa: {}
+
+  - name: api
+    azs: [z1, z2]
+    templates: (( grab meta.api_templates ))
+    instances: 2
+    vm_type: medium
+    vm_extensions:
+      - 64g_ephemeral_disk
+      - cf_cc_instance_profile
+      - cf_cc_security_groups
+      - cf_cc_elb
+    stemcell: default
+    networks:
+      - name: cf
+    properties:
+      consul:
+        agent:
+          services: (( grab meta.api_consul_services ))
+
+  - name: clock_global
+    azs: [z1]
+    templates: (( grab meta.clock_templates ))
+    instances: 1
+    vm_type: medium
+    vm_extensions:
+      - cf_cc_security_groups
+    stemcell: default
+    networks:
+      - name: cf
+
+  - name: api_worker
+    azs: [z1, z2]
+    templates: (( grab meta.api_worker_templates ))
+    instances: 2
+    vm_type: medium
+    vm_extensions:
+      - 64g_ephemeral_disk
+      - cf_cc_instance_profile
+      - cf_cc_security_groups
+    stemcell: default
+    networks:
+      - name: cf
+
+  - name: doppler
+    azs: [z1, z2]
+    templates: (( grab meta.loggregator_templates ))
+    instances: 2
+    vm_type: medium
+    stemcell: default
+    networks:
+      - name: cf
+    properties:
+      consul:
+        agent:
+          services:
+            doppler: {}
+
+  - name: loggregator_trafficcontroller
+    azs: [z1, z2]
+    templates: (( grab meta.loggregator_trafficcontroller_templates ))
+    instances: 2
+    vm_type: medium
+    vm_extensions:
+      - cf_loggregator_elbs
+    stemcell: default
+    networks:
+      - name: cf
+    properties:
+      loggregator:
+        uaa:
+          client_secret: (( grab properties.uaa.clients.doppler.secret ))
+      consul:
+        agent:
+          services:
+            loggregator_trafficcontroller: {}
+
+  - name: router
+    azs: [z1, z2]
+    templates: (( grab meta.router_templates ))
+    instances: 2
+    vm_type: router
+    stemcell: default
+    networks:
+      - name: router
+    properties:
+      consul:
+        agent:
+          services:
+            gorouter: {}
+      racoon:
+        ports:
+        - name: router
+          targets: (( grab terraform_outputs.cell_subnet_cidr_blocks ))
+
+  - name: brain
+    azs: [z1, z2]
+    templates:
+      - name: consul_agent
+        release: cf
+      - name: datadog-consul
+        release: datadog-for-cloudfoundry
+      - name: auctioneer
+        release: diego
+      - name: cfdot
+        release: diego
+      - name: metron_agent
+        release: cf
+    instances: 2
+    vm_type: medium
+    stemcell: default
+    networks:
+      - name: cf
+
+  - name: cell
+    azs: [z1, z2, z3]
+    templates:
+      - name: consul_agent
+        release: cf
+      - name: datadog-consul
+        release: datadog-for-cloudfoundry
+      - name: rep
+        release: diego
+      - name: garden
+        release: garden-runc
+      - name: cflinuxfs2-rootfs-setup
+        release: cflinuxfs2-rootfs
+      - name: cfdot
+        release: diego
+      - name: metron_agent
+        release: cf
+      - name: datadog-rep
+        release: datadog-for-cloudfoundry
+      - name: datadog-garden
+        release: datadog-for-cloudfoundry
+      - name: racoon
+        release: ipsec
+      - name: datadog-ipsec
+        release: datadog-for-cloudfoundry
+    instances: (( grab meta.cell.instances ))
+    vm_type: cell
+    stemcell: default
+    networks:
+      - name: cell
+    properties:
+      racoon:
+        ports:
+        - name: cell
+          targets: (( grab terraform_outputs.router_subnet_cidr_blocks ))
+
+  - name: cc_bridge
+    azs: [z1, z2]
+    templates:
+      - name: consul_agent
+        release: cf
+      - name: datadog-consul
+        release: datadog-for-cloudfoundry
+      - name: stager
+        release: cf
+      - name: nsync
+        release: cf
+      - name: tps
+        release: cf
+      - name: cc_uploader
+        release: cf
+      - name: cfdot
+        release: diego
+      - name: metron_agent
+        release: cf
+    instances: 2
+    vm_type: medium
+    stemcell: default
+    networks:
+      - name: cf
+
+  - name: route_emitter
+    azs: [z1, z2]
+    templates:
+      - name: consul_agent
+        release: cf
+      - name: datadog-consul
+        release: datadog-for-cloudfoundry
+      - name: route_emitter
+        release: diego
+      - name: cfdot
+        release: diego
+      - name: metron_agent
+        release: cf
+      - name: datadog-route-emitter
+        release: datadog-for-cloudfoundry
+    instances: 2
+    vm_type: medium
+    stemcell: default
+    networks:
+      - name: cf
+
+  - name: access
+    azs: [z1, z2]
+    templates:
+      - name: consul_agent
+        release: cf
+      - name: datadog-consul
+        release: datadog-for-cloudfoundry
+      - name: ssh_proxy
+        release: diego
+      - name: metron_agent
+        release: cf
+      - name: file_server
+        release: diego
+      - name: cfdot
+        release: diego
+    instances: 2
+    vm_type: small
+    vm_extensions:
+      - ssh_proxy_elb
+    stemcell: default
+    networks:
+      - name: cf

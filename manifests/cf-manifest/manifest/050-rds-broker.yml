@@ -1,0 +1,235 @@
+meta:
+  rds_broker:
+    default_postgres_rds_properties:
+      engine: "postgres"
+      engine_version: "9.5.4"
+      storage_type: "gp2"
+      auto_minor_version_upgrade: true
+      multi_az: false
+      storage_encrypted: false
+      publicly_accessible: false
+      copy_tags_to_snapshot: true
+      skip_final_snapshot: false
+      backup_retention_period: 7
+      db_subnet_group_name: (( grab terraform_outputs.rds_broker_dbs_subnet_group ))
+      vpc_security_group_ids:
+        - (( grab terraform_outputs.rds_broker_dbs_security_group_id ))
+      db_parameter_group_name: (( grab terraform_outputs.rds_broker_postgres95_db_parameter_group ))
+    small_postgres_rds_properties:
+      inject: (( inject meta.rds_broker.default_postgres_rds_properties ))
+      db_instance_class: "db.t2.small"
+      allocated_storage: 20
+    medium_postgres_rds_properties:
+      inject: (( inject meta.rds_broker.default_postgres_rds_properties ))
+      db_instance_class: "db.m4.large"
+      allocated_storage: 20
+    large_postgres_rds_properties:
+      inject: (( inject meta.rds_broker.default_postgres_rds_properties ))
+      db_instance_class: "db.m4.2xlarge"
+      allocated_storage: 20
+
+releases:
+  - name: rds-broker
+    version: 0.1.3
+    url: https://s3-eu-west-1.amazonaws.com/gds-paas-build-releases/rds-broker-0.1.3.tgz
+    sha1: 99cb288048d1f5c394e663985e7a8c15c5b2617a
+
+jobs:
+  - name: rds_broker
+    azs: [z1, z2]
+    instances: 2
+    vm_type: rds_broker
+    stemcell: default
+    templates:
+      - name: rds-broker
+        release: rds-broker
+    networks:
+      - name: cf
+    properties:
+      rds-broker:
+        allow_user_provision_parameters: true
+        allow_user_update_parameters: true
+        aws_access_key_id: ""
+        aws_secret_access_key: ""
+        aws_region: "eu-west-1"
+        password: (( grab secrets.rds_broker_admin_password ))
+        state_encryption_key: (( grab secrets.rds_broker_state_encryption_key ))
+        db_prefix: "rdsbroker"
+        master_password_seed: (( grab secrets.rds_broker_master_password_seed ))
+        broker_name: "(( grab terraform_outputs.environment ))"
+        catalog:
+          services:
+            - id: "ce71b484-d542-40f7-9dd4-5526e38c81ba"
+              name: "postgres"
+              description: "AWS RDS PostgreSQL service"
+              bindable: true
+              tags:
+                - "postgres"
+                - "relational"
+              metadata:
+                displayName: "AWS RDS Postgres"
+                imageUrl: ""
+                longDescription: "AWS RDS postgres service"
+                providerDisplayName: "Amazon Web Services"
+                documentationUrl: "https://aws.amazon.com/documentation/rds/"
+                supportUrl: "https://forums.aws.amazon.com/forum.jspa?forumID=60"
+              plan_updateable: true
+              plans:
+                - id: "5f2eec8a-0cad-4ab9-b81e-d6adade2fd42"
+                  name: "Free"
+                  description: "5GB Storage, NOT BACKED UP, Dedicated Instance, Max 50 Concurrent Connections. Postgres Version 9.5. DB Instance Class: db.t2.micro."
+                  free: true
+                  metadata:
+                    bullets:
+                      - "Dedicated Postgres 9.5 server"
+                      - "AWS RDS"
+                  rds_properties:
+                    inject: (( inject meta.rds_broker.default_postgres_rds_properties ))
+                    db_instance_class: "db.t2.micro"
+                    allocated_storage: 5
+                    backup_retention_period: 0
+                    skip_final_snapshot: true
+
+                - id: "b7d0a368-ac92-4eff-9b8d-ab4ba45bed0e"
+                  name: "S-dedicated-9.5"
+                  description: "20GB Storage, Dedicated Instance, Max 200 Concurrent Connections. Postgres Version 9.5. DB Instance Class: db.t2.small."
+                  free: false
+                  metadata:
+                    costs:
+                      - amount:
+                          usd: 0.039
+                        unit: "HOUR"
+                    bullets:
+                      - "Dedicated Postgres 9.5 server"
+                      - "AWS RDS"
+                  rds_properties:
+                    inject: (( inject meta.rds_broker.small_postgres_rds_properties ))
+
+                - id: "359bcb39-0264-46bd-9120-0182c3829067"
+                  name: "S-HA-dedicated-9.5"
+                  description: "20GB Storage, Dedicated Instance, Highly Available, Max 200 Concurrent Connections. Postgres Version 9.5. DB Instance Class: db.t2.small."
+                  free: false
+                  metadata:
+                    costs:
+                      - amount:
+                          usd: 0.078
+                        unit: "HOUR"
+                    bullets:
+                      - "Dedicated Postgres 9.5 server"
+                      - "AWS RDS"
+                  rds_properties:
+                    inject: (( inject meta.rds_broker.small_postgres_rds_properties ))
+                    multi_az: true
+
+                - id: "9b882524-ab58-4c18-b501-d2a3f4619104"
+                  name: "M-dedicated-9.5"
+                  description: "20GB Storage, Dedicated Instance, Max 500 Concurrent Connections. Postgres Version 9.5. DB Instance Class: db.m4.large."
+                  free: false
+                  metadata:
+                    costs:
+                      - amount:
+                          usd: 0.201
+                        unit: "HOUR"
+                    bullets:
+                      - "Dedicated Postgres 9.5 server"
+                      - "AWS RDS"
+                  rds_properties:
+                    inject: (( inject meta.rds_broker.medium_postgres_rds_properties ))
+
+                - id: "bf5b99c2-7990-4b66-b341-1bb83566d76e"
+                  name: "M-HA-dedicated-9.5"
+                  description: "20GB Storage, Dedicated Instance, Highly Available, Max 500 Concurrent Connections. Postgres Version 9.5. DB Instance Class: db.m4.large."
+                  free: false
+                  metadata:
+                    costs:
+                      - amount:
+                          usd: 0.402
+                        unit: "HOUR"
+                    bullets:
+                      - "Dedicated Postgres 9.5 server"
+                      - "AWS RDS"
+                  rds_properties:
+                    inject: (( inject meta.rds_broker.medium_postgres_rds_properties ))
+                    multi_az: true
+
+                - id: "8d50ccc5-707c-4306-be8f-f59a158eb736"
+                  name: "M-HA-enc-dedicated-9.5"
+                  description: "20GB Storage, Dedicated Instance, Highly Available, Storage Encrypted, Max 500 Concurrent Connections. Postgres Version 9.5. DB Instance Class: db.m4.large."
+                  free: false
+                  metadata:
+                    costs:
+                      - amount:
+                          usd: 0.402
+                        unit: "HOUR"
+                    bullets:
+                      - "Dedicated Postgres 9.5 server"
+                      - "Storage Encrypted"
+                      - "AWS RDS"
+                  rds_properties:
+                    inject: (( inject meta.rds_broker.medium_postgres_rds_properties ))
+                    multi_az: true
+                    storage_encrypted: true
+
+                - id: "238a1328-4f77-4b70-9bd9-2cdbbfb999c8"
+                  name: "L-dedicated-9.5"
+                  description: "20GB Storage, Dedicated Instance, Max 5000 Concurrent Connections. Postgres Version 9.5. DB Instance Class: db.m4.2xlarge."
+                  free: false
+                  metadata:
+                    costs:
+                      - amount:
+                          usd: 0.806
+                        unit: "HOUR"
+                    bullets:
+                      - "Dedicated Postgres 9.5 server"
+                      - "AWS RDS"
+                  rds_properties:
+                    inject: (( inject meta.rds_broker.large_postgres_rds_properties ))
+
+                - id: "dfe4ab2b-2069-41a5-ba08-2be21b0c76d3"
+                  name: "L-HA-dedicated-9.5"
+                  description: "20GB Storage, Dedicated Instance, Highly Available, Max 5000 Concurrent Connections. Postgres Version 9.5. DB Instance Class: db.m4.2xlarge."
+                  free: false
+                  metadata:
+                    costs:
+                      - amount:
+                          usd: 1.612
+                        unit: "HOUR"
+                    bullets:
+                      - "Dedicated Postgres 9.5 server"
+                      - "AWS RDS"
+                  rds_properties:
+                    inject: (( inject meta.rds_broker.large_postgres_rds_properties ))
+                    multi_az: true
+
+                - id: "620055b3-fe7c-46fc-87ad-c7d8f4fe7f34"
+                  name: "L-HA-enc-dedicated-9.5"
+                  description: "20GB Storage, Dedicated Instance, Highly Available, Storage Encrypted, Max 5000 Concurrent Connections. Postgres Version 9.5. DB Instance Class: db.m4.2xlarge."
+                  free: false
+                  metadata:
+                    costs:
+                      - amount:
+                          usd: 1.612
+                        unit: "HOUR"
+                    bullets:
+                      - "Dedicated Postgres 9.5 server"
+                      - "Storage Encrypted"
+                      - "AWS RDS"
+                  rds_properties:
+                    inject: (( inject meta.rds_broker.large_postgres_rds_properties ))
+                    multi_az: true
+                    storage_encrypted: true
+properties:
+  cc:
+    security_group_definitions:
+      - name: rds_broker_instances
+        rules:
+          - protocol: tcp
+            destination: (( grab terraform_outputs.aws_backing_service_cidr_all ))
+            ports: '5432'
+
+    default_running_security_groups:
+      - (( append ))
+      - "rds_broker_instances"
+    default_staging_security_groups:
+      - (( append ))
+      - "rds_broker_instances"

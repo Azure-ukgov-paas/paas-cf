@@ -1,0 +1,4 @@
+**/*.tfstate
+bin/fly*
+.idea/
+platform-tests/pkg

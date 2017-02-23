@@ -1,0 +1,49 @@
+---
+meta:
+  default_env:
+    bosh:
+      password: (( grab secrets.vcap_password ))
+
+vm_types:
+  - name: small
+    network: cf
+    env: (( grab meta.default_env ))
+    cloud_properties:
+      instance_type: t2.small
+      ephemeral_disk:
+        size: 10240
+        type: gp2
+
+  - name: medium
+    network: cf
+    env: (( grab meta.default_env ))
+    cloud_properties:
+      instance_type: m3.medium
+      ephemeral_disk:
+        size: 10240
+        type: gp2
+
+  - name: router
+    network: router
+    env: (( grab meta.default_env ))
+    cloud_properties:
+      instance_type: c3.large
+      ephemeral_disk:
+        size: 10240
+        type: gp2
+      elbs:
+        - (( grab terraform_outputs.cf_router_elb_name ))
+
+# Diego below
+
+  - name: cell
+    network: cell
+    env: (( grab meta.default_env ))
+    cloud_properties:
+      instance_type: r4.xlarge
+      ephemeral_disk:
+        size: 102400
+        type: gp2
+      security_groups:
+        - (( grab terraform_outputs.rds_broker_db_clients_security_group ))
+        - (( grab terraform_outputs.default_security_group ))

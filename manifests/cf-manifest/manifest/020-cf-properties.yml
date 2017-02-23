@@ -1,0 +1,636 @@
+---
+meta:
+  fog_config:
+    provider: AWS
+    use_iam_profile: true
+    region: (( grab terraform_outputs.region ))
+  secrets:
+    consul_ca_cert: (( grab secrets.bosh_ca_cert ))
+    bbs_ca_cert: (( grab secrets.bosh_ca_cert ))
+
+  consul_servers: (( grab jobs.consul.networks.cf.static_ips ))
+
+properties:
+  system_domain: (( grab terraform_outputs.cf_root_domain ))
+  system_domain_organization: admin
+  app_domains:
+   - (( grab terraform_outputs.cf_apps_domain ))
+
+  app_ssh:
+    host_key_fingerprint: (( grab secrets.ssh_proxy_host_key.public_fingerprint ))
+
+  support_address: "https://docs.cloud.service.gov.uk"
+  description: null
+  ssl:
+    skip_cert_verify: false
+
+  disk_quota_enabled: true
+
+  request_timeout_in_seconds: 900
+
+  consul:
+    agent:
+      domain: cf.internal
+      log_level:
+      servers:
+        lan: (( grab meta.consul_servers ))
+      dns_config:
+        allow_stale: true
+        max_stale: "30s"
+    ca_cert: (( grab meta.secrets.consul_ca_cert ))
+    agent_cert: (( grab secrets.consul_agent_cert ))
+    agent_key: (( grab secrets.consul_agent_key ))
+    encrypt_keys: (( grab secrets.consul_encrypt_keys ))
+    require_ssl:
+    server_cert: (( grab secrets.consul_server_cert ))
+    server_key: (( grab secrets.consul_server_key ))
+
+  dropsonde:
+    enabled: true
+
+  nats:
+    port: 4222
+    machines: (( grab jobs.nats.networks.cf.static_ips ))
+    debug: false
+    trace: false
+    monitor_port: 0
+    prof_port: 0
+    user: nats_user
+    password: (( grab secrets.nats_password ))
+
+  etcd:
+    disable_network_diagnostics: true
+    machines: (( grab jobs.etcd.networks.cf.static_ips ))
+    require_ssl: false
+    peer_require_ssl: (( grab properties.etcd.require_ssl ))
+    advertise_urls_dns_suffix: etcd.service.cf.internal
+    ca_cert: ""
+    client_cert: ""
+    client_key: ""
+    peer_ca_cert: ""
+    peer_cert: ""
+    peer_key: ""
+    server_cert: ""
+    server_key: ""
+
+  etcd_metrics_server:
+    etcd:
+      require_ssl: (( grab properties.etcd.require_ssl ))
+      ca_cert: (( grab properties.etcd.ca_cert ))
+      client_cert: (( grab properties.etcd.client_cert ))
+      client_key: (( grab properties.etcd.client_key ))
+      dns_suffix: (( grab properties.etcd.advertise_urls_dns_suffix ))
+    nats:
+      machines: (( grab properties.nats.machines ))
+      username: (( grab properties.nats.user ))
+      password: (( grab properties.nats.password ))
+
+  loggregator:
+    maxRetainedLogMessages: 100
+    debug: false
+    blacklisted_syslog_ranges:
+      - start: 10.10.0.0
+        end: 10.10.255.255
+    outgoing_dropsonde_port: 8081
+    dropsonde_incoming_port: 3457
+    traffic_controller_url: (( concat "wss://doppler." properties.system_domain ":443" ))
+    tls:
+      ca_cert: (( grab secrets.bosh_ca_cert ))
+      doppler:
+        cert: (( grab secrets.doppler_cert  ))
+        key: (( grab secrets.doppler_key  ))
+      metron:
+        cert: (( grab secrets.metron_cert  ))
+        key: (( grab secrets.metron_key  ))
+      trafficcontroller:
+        cert: (( grab secrets.trafficcontroller_cert  ))
+        key: (( grab secrets.trafficcontroller_key  ))
+    etcd:
+      machines: [(( grab properties.etcd.advertise_urls_dns_suffix ))]
+      require_ssl: (( grab properties.etcd.require_ssl ))
+      ca_cert: (( grab properties.etcd.ca_cert ))
+
+  loggregator_endpoint:
+    shared_secret: (( grab secrets.loggregator_endpoint_shared_secret ))
+
+  logger_endpoint:
+    port: 443
+  syslog_daemon_config:
+    enable: false
+
+  doppler:
+    maxRetainedLogMessages: 100
+    debug: false
+    blacklisted_syslog_ranges: ~
+    unmarshaller_count: 5
+    port: 443
+    outgoing_port: 8081
+    etcd:
+      client_cert: (( grab properties.etcd.client_cert ))
+      client_key: (( grab properties.etcd.client_key ))
+
+  doppler_endpoint:
+    shared_secret: (( grab properties.loggregator_endpoint.shared_secret ))
+
+  metron_agent:
+    deployment: (( grab meta.environment ))
+    preferred_protocol: ~
+    enable_buffer: ~
+    buffer_size: ~
+    dropsonde_incoming_port: (( grab properties.loggregator.dropsonde_incoming_port ))
+
+  metron_endpoint:
+    shared_secret: (( grab properties.loggregator_endpoint.shared_secret ))
+
+  traffic_controller:
+    outgoing_port: 8080
+    etcd:
+      client_cert: (( grab properties.etcd.client_cert ))
+      client_key: (( grab properties.etcd.client_key ))
+
+  syslog_drain_binder:
+    etcd:
+      client_cert: (( grab properties.etcd.client_cert ))
+      client_key: (( grab properties.etcd.client_key ))
+
+  ha_proxy:
+    enable_proxy_protocol: true
+    disable_http: true
+    go_router:
+      servers: [ "127.0.0.1" ]
+      port: 80
+    additional_frontend_config: |
+      capture response header strict-transport-security len 128
+      http-response add-header Strict-Transport-Security max-age=31536000;\ includeSubDomains;\ preload unless { capture.res.hdr(0) -m found }
+    enable_healthcheck_frontend: true
+    ssl_pem: (( concat secrets.router_internal_cert secrets.router_internal_key ))
+
+  router:
+    enable_ssl: false
+    status:
+      user: router_user
+      password: (( grab secrets.router_password ))
+    drain_wait: 15
+    route_services_secret: (( grab secrets.route_services_secret ))
+
+  cc:
+    jobs:
+      global:
+        timeout_in_seconds: 14400 # 4 hours
+      app_bits_packer:
+        timeout_in_seconds: ~
+      app_events_cleanup:
+        timeout_in_seconds: ~
+      app_usage_events_cleanup:
+        timeout_in_seconds: ~
+      blobstore_delete:
+        timeout_in_seconds: ~
+      blobstore_upload:
+        timeout_in_seconds: ~
+      droplet_deletion:
+        timeout_in_seconds: ~
+      droplet_upload:
+        timeout_in_seconds: ~
+      generic:
+        number_of_workers: 3
+      local:
+        number_of_workers: 3
+
+    app_events:
+      cutoff_age_in_days: 31
+    app_usage_events:
+      cutoff_age_in_days: 31
+    service_usage_events:
+      cutoff_age_in_days: 31
+    audit_events:
+      cutoff_age_in_days: 31
+
+    users_can_select_backend: true
+    default_to_diego_backend: true
+    allow_app_ssh_access: true
+    default_app_memory: 1024
+    default_app_disk_in_mb: 1024
+    maximum_app_disk_in_mb: 2048
+    client_max_body_size: 15M
+
+    default_health_check_timeout: 60
+    maximum_health_check_timeout: 180
+
+    min_cli_version: ~
+    min_recommended_cli_version: ~
+
+    external_host: api
+    external_port: 9022
+    srv_api_uri: (( concat "https://" properties.cc.external_host "." properties.system_domain ))
+
+    bulk_api_password: (( grab secrets.bulk_api_password ))
+    internal_api_user: "internal_user"
+    internal_api_password: (( grab properties.cc.bulk_api_password ))
+
+    staging_upload_user: staging_upload_user
+    staging_upload_password: (( grab secrets.staging_upload_password ))
+
+    db_encryption_key: (( grab secrets.cc_db_encryption_key ))
+
+    logging_level: info
+    db_logging_level: debug
+
+    directories: ~
+
+    disable_custom_buildpacks: true
+
+    broker_client_timeout_seconds: 70
+    broker_client_default_async_poll_interval_seconds: ~
+    broker_client_max_async_poll_duration_minutes: ~
+
+    resource_pool:
+      resource_directory_key: (( concat meta.environment "-cf-resources" ))
+      fog_connection: (( grab meta.fog_config ))
+      cdn: ~
+
+    packages:
+      app_package_directory_key: (( concat meta.environment "-cf-packages" ))
+      fog_connection: (( grab meta.fog_config ))
+      cdn: ~
+      max_package_size: 1073741824
+      max_valid_packages_stored: ~
+
+    droplets:
+      droplet_directory_key: (( concat meta.environment "-cf-droplets" ))
+      fog_connection: (( grab meta.fog_config ))
+      cdn: ~
+      max_staged_droplets_stored: ~
+
+    development_mode: false
+
+    newrelic:
+      license_key: ~
+      environment_name: (( grab meta.environment ))
+      developer_mode: (( grab properties.cc.development_mode ))
+      monitor_mode: false
+      capture_params: false
+      transaction_tracer:
+        enabled: true
+        record_sql: "obfuscated"
+
+    buildpacks:
+      buildpack_directory_key: (( concat meta.environment "-cf-buildpacks" ))
+      fog_connection: (( grab meta.fog_config ))
+      cdn: ~
+    quota_definitions:
+      default:
+        memory_limit: 2048
+        total_services: 10
+        non_basic_services_allowed: false
+        total_routes: 1000
+      small:
+        memory_limit: 10240
+        total_services: 10
+        non_basic_services_allowed: true
+        total_routes: 1000
+      medium:
+        memory_limit: 61440
+        total_services: 10
+        non_basic_services_allowed: true
+        total_routes: 1000
+      large:
+        memory_limit: 102400
+        total_services: 10
+        non_basic_services_allowed: true
+        total_routes: 1000
+      test_apps:
+        memory_limit: 2048
+        total_services: 10
+        non_basic_services_allowed: true
+        total_routes: 1000
+    default_quota_definition: default
+
+    install_buildpacks:
+      - name: staticfile_buildpack
+        package: staticfile-buildpack
+      - name: java_buildpack
+        package: java-offline-buildpack
+      - name: ruby_buildpack
+        package: ruby-buildpack
+      - name: nodejs_buildpack
+        package: nodejs-buildpack
+      - name: go_buildpack
+        package: go-buildpack
+      - name: python_buildpack
+        package: python-buildpack
+      - name: php_buildpack
+        package: php-buildpack
+      - name: binary_buildpack
+        package: binary-buildpack
+
+    stacks: ~
+
+    allowed_cors_domains: []
+    thresholds:
+      api:
+        alert_if_above_mb: ~
+        restart_if_consistently_above_mb: ~
+        restart_if_above_mb: ~
+      worker:
+        alert_if_above_mb: ~
+        restart_if_consistently_above_mb: ~
+        restart_if_above_mb: ~
+    external_protocol: ~
+
+  ccdb:
+    db_scheme: postgres
+    address: (( grab terraform_outputs.cf_db_address ))
+    port: 5432
+    roles:
+      - tag: admin
+        name: api
+        password: (( grab secrets.cf_db_api_password ))
+    databases:
+      - tag: cc
+        name: api
+        citext: true
+
+
+  login:
+    saml:
+      serviceProviderKey: ((grab secrets.saml_key))
+      serviceProviderKeyPassword: ""
+      serviceProviderCertificate: ((grab secrets.saml_cert))
+    enabled: true
+    brand: oss
+    links:
+      passwd: (( concat "https://login." properties.system_domain "/forgot_password" ))
+      signup: (( concat "https://login." properties.system_domain "/create_account" ))
+  uaa:
+    url: (( concat "https://uaa." properties.system_domain ))
+    issuer: (( grab properties.uaa.url ))
+    token_url: (( concat properties.uaa.url "/oauth/token" ))
+    require_https: false
+    logging_level: INFO
+    scim:
+      userids_enabled: true
+      users:
+        - name: admin
+          password: (( grab secrets.uaa_admin_password ))
+          groups:
+            - scim.write
+            - scim.read
+            - openid
+            - cloud_controller.admin
+            - doppler.firehose
+
+    port: 8080
+    ssl:
+      port: 8443
+    sslCertificate: (( grab secrets.uaa_internal_cert ))
+    sslPrivateKey: (( grab secrets.uaa_internal_key ))
+    ca_cert: (( grab secrets.bosh_ca_cert ))
+
+    password:
+      policy:
+        minLength: 8
+
+    admin:
+      client_secret: (( grab secrets.uaa_admin_client_secret ))
+    cc:
+      client_secret: (( grab secrets.uaa_cc_client_secret ))
+
+    jwt:
+      verification_key: (( grab secrets.uaa_jwt_verification_key ))
+      signing_key: (( grab secrets.uaa_jwt_signing_key ))
+      policy:
+        refreshTokenValiditySeconds: 604800
+        global:
+          refreshTokenValiditySeconds: 604800
+
+    clients:
+      login:
+        override: true
+        scope: openid,oauth.approvals
+        authorities: oauth.login,scim.write,clients.read,notifications.write,critical_notifications.write,emails.write,scim.userids,password.write
+        authorized-grant-types: authorization_code,client_credentials,refresh_token
+        redirect-uri: (( concat "https://login." properties.system_domain ))
+        secret: (( grab secrets.uaa_clients_login_secret ))
+      cf:
+        id: cf
+        override: true
+        authorized-grant-types: password,refresh_token
+        scope: cloud_controller.read,cloud_controller.write,openid,password.write,cloud_controller.admin,cloud_controller.admin_read_only,scim.read,scim.write,doppler.firehose,uaa.user,routing.router_groups.read,routing.router_groups.write
+        authorities: uaa.none
+        access-token-validity: 600
+        refresh-token-validity: 604800
+      notifications:
+        authorities: cloud_controller.admin,scim.read
+        authorized-grant-types: client_credentials
+        secret: (( grab secrets.uaa_clients_notifications_secret ))
+      doppler:
+        override: true
+        authorities: uaa.resource
+        secret: (( grab secrets.uaa_clients_doppler_secret ))
+      cloud_controller_username_lookup:
+        authorities: scim.userids
+        authorized-grant-types: client_credentials
+        secret: (( grab secrets.uaa_clients_cloud_controller_username_lookup_secret ))
+      cc_routing:
+        authorities: routing.router_groups.read
+        authorized-grant-types: client_credentials
+        secret: (( grab secrets.uaa_cc_routing_secret ))
+      gorouter:
+        authorities: routing.routes.read
+        authorized-grant-types: client_credentials,refresh_token
+        secret: (( grab secrets.uaa_clients_gorouter_secret ))
+      tcp_emitter:
+        authorities: routing.routes.write,routing.routes.read
+        authorized-grant-types: client_credentials,refresh_token
+      tcp_router:
+        authorities: routing.routes.read
+        authorized-grant-types: client_credentials,refresh_token
+      ssh-proxy:
+        authorized-grant-types: authorization_code
+        autoapprove: true
+        override: true
+        redirect-uri: /login
+        scope: openid,cloud_controller.read,cloud_controller.write,cloud_controller.admin
+        secret: (( grab secrets.uaa_clients_ssh_proxy_secret ))
+      graphite-nozzle:
+        access-token-validity: 1209600
+        authorized-grant-types: authorization_code,client_credentials,refresh_token
+        override: true
+        secret: (( grab secrets.uaa_clients_firehose_password ))
+        scope: openid,oauth.approvals,doppler.firehose
+        authorities: oauth.login,doppler.firehose
+      cc-service-dashboards:
+        secret: (( grab secrets.uaa_clients_cc_service_dashboards_password ))
+        scope: openid,cloud_controller_service_permissions.read
+        authorities: clients.read,clients.write,clients.admin
+        authorized-grant-types: authorization_code,client_credentials
+
+    zones:
+      internal:
+        hostnames:
+          - uaa.service.cf.internal
+
+  uaadb:
+    db_scheme: postgresql
+    address: (( grab terraform_outputs.cf_db_address ))
+    port: 5432
+    roles:
+      - tag: admin
+        name: uaa
+        password: (( grab secrets.cf_db_uaa_password ))
+    databases:
+      - tag: uaa
+        name: uaa
+        citext: true
+
+  diego:
+    ssl:
+      skip_cert_verify: false
+      starting_container_weight: 0.25
+    cfdot:
+      bbs:
+        ca_cert: (( grab meta.secrets.bbs_ca_cert ))
+        client_cert: (( grab secrets.bbs_client_cert  ))
+        client_key: (( grab secrets.bbs_client_key  ))
+        use_ssl: (( grab properties.diego.bbs.require_ssl ))
+    auctioneer:
+      bbs:
+        api_location: bbs.service.cf.internal:8889
+        ca_cert: (( grab meta.secrets.bbs_ca_cert ))
+        client_cert: (( grab secrets.bbs_client_cert  ))
+        client_key: (( grab secrets.bbs_client_key  ))
+        require_ssl: true
+      dropsonde_port: (( grab properties.metron_agent.dropsonde_incoming_port ))
+
+    bbs:
+      active_key_label: key-2017-01
+      encryption_keys:
+        - label: key-2017-01
+          passphrase: (( grab secrets.bbs_encryption_key ))
+      ca_cert: (( grab meta.secrets.bbs_ca_cert ))
+      server_cert: (( grab secrets.bbs_server_cert ))
+      server_key: (( grab secrets.bbs_server_key ))
+      auctioneer:
+        api_location: auctioneer.service.cf.internal:9016
+      etcd:
+        machines: []
+        ca_cert: ""
+        client_cert: ""
+        client_key: ""
+        require_ssl: false
+      sql:
+        db_username: bbs
+        db_password: (( grab secrets.cf_db_bbs_password ))
+        db_host: (( grab terraform_outputs.cf_db_address ))
+        db_port: 5432
+        db_schema: bbs
+        db_driver: postgres
+        max_open_connections: 100
+      dropsonde_port: (( grab properties.metron_agent.dropsonde_incoming_port ))
+      require_ssl: true
+
+    file_server:
+      dropsonde_port: (( grab properties.metron_agent.dropsonde_incoming_port ))
+
+    rep:
+      dropsonde_port: (( grab properties.metron_agent.dropsonde_incoming_port ))
+      bbs:
+        api_location: bbs.service.cf.internal:8889
+        ca_cert: (( grab meta.secrets.bbs_ca_cert ))
+        client_cert: (( grab secrets.bbs_client_cert ))
+        client_key: (( grab secrets.bbs_client_key ))
+        require_ssl: true
+      preloaded_rootfses:
+        - "cflinuxfs2:/var/vcap/packages/cflinuxfs2/rootfs"
+
+    route_emitter:
+      dropsonde_port: (( grab properties.metron_agent.dropsonde_incoming_port ))
+      bbs:
+        api_location: bbs.service.cf.internal:8889
+        ca_cert: (( grab meta.secrets.bbs_ca_cert ))
+        client_cert: (( grab secrets.bbs_client_cert ))
+        client_key: (( grab secrets.bbs_client_key ))
+        require_ssl: true
+      nats:
+        machines: (( grab properties.nats.machines ))
+        user: (( grab properties.nats.user ))
+        password: (( grab properties.nats.password ))
+        port: (( grab properties.nats.port ))
+
+    ssh_proxy:
+      dropsonde_port: (( grab properties.metron_agent.dropsonde_incoming_port ))
+      bbs:
+        api_location: bbs.service.cf.internal:8889
+        ca_cert: (( grab meta.secrets.bbs_ca_cert ))
+        client_cert: (( grab secrets.bbs_client_cert ))
+        client_key: (( grab secrets.bbs_client_key ))
+        require_ssl: true
+      host_key: (( grab secrets.ssh_proxy_host_key.private_key ))
+      enable_cf_auth: true
+      enable_diego_auth: false
+      diego_credentials: ""
+      uaa_secret: (( grab properties.uaa.clients.ssh-proxy.secret ))
+      uaa_token_url: (( grab properties.uaa.token_url ))
+
+  capi:
+    cc_uploader:
+      dropsonde_port: (( grab properties.metron_agent.dropsonde_incoming_port ))
+      cc:
+        base_url: (( grab properties.cc.srv_api_uri ))
+        basic_auth_password: (( grab properties.cc.internal_api_password ))
+        staging_upload_user: (( grab properties.cc.staging_upload_user ))
+        staging_upload_password: (( grab properties.cc.staging_upload_password ))
+
+    nsync:
+      dropsonde_port: (( grab properties.metron_agent.dropsonde_incoming_port ))
+      bbs:
+        api_location: bbs.service.cf.internal:8889
+        ca_cert: (( grab meta.secrets.bbs_ca_cert ))
+        client_cert: (( grab secrets.bbs_client_cert  ))
+        client_key: (( grab secrets.bbs_client_key  ))
+        require_ssl: true
+
+      cc:
+        base_url:  (( grab properties.cc.srv_api_uri ))
+        basic_auth_password: (( grab properties.cc.internal_api_password ))
+        staging_upload_user: (( grab properties.cc.staging_upload_user ))
+        staging_upload_password: (( grab properties.cc.staging_upload_password ))
+
+    stager:
+      dropsonde_port: (( grab properties.metron_agent.dropsonde_incoming_port ))
+      bbs:
+        api_location: bbs.service.cf.internal:8889
+        ca_cert: (( grab meta.secrets.bbs_ca_cert ))
+        client_cert: (( grab secrets.bbs_client_cert ))
+        client_key: (( grab secrets.bbs_client_key ))
+        require_ssl: true
+      cc:
+        base_url: (( grab properties.cc.srv_api_uri ))
+        basic_auth_password: (( grab properties.cc.internal_api_password ))
+        staging_upload_user: (( grab properties.cc.staging_upload_user ))
+        staging_upload_password: (( grab properties.cc.staging_upload_password ))
+
+    tps:
+      dropsonde_port: (( grab properties.metron_agent.dropsonde_incoming_port ))
+      cc:
+        base_url: (( grab properties.cc.srv_api_uri ))
+        basic_auth_password: (( grab properties.cc.internal_api_password ))
+        staging_upload_user: (( grab properties.cc.staging_upload_user ))
+        staging_upload_password: (( grab properties.cc.staging_upload_password ))
+      bbs:
+        api_location: bbs.service.cf.internal:8889
+        ca_cert: (( grab meta.secrets.bbs_ca_cert ))
+        client_cert: (( grab secrets.bbs_client_cert ))
+        client_key: (( grab secrets.bbs_client_key ))
+        require_ssl: true
+      traffic_controller_url: (( grab properties.loggregator.traffic_controller_url ))
+  cflinuxfs2-rootfs:
+    trusted_certs: (( grab meta.ca_certs.aws_rds_combined_ca_bundle ))
+
+  garden:
+    log_level: error
+  racoon:
+    certificate_authority_cert: (( grab secrets.ipsec_ca_cert ))
+    certificate_authority_private_key: (( grab secrets.ipsec_ca_key ))
+    verify_certificate: "on"
+    level: require

@@ -1,0 +1,84 @@
+$background: #444;
+$text: #fff;
+$success: #0E8F00;
+$warning: #F25F00;
+$failure: #AF0900;
+$error: #5B0274;
+
+
+.widget-health {
+  li {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding-top: 5px;
+
+
+    h1 {
+      font-size: 7vh;
+    }
+
+    h3 {
+      font-size: 7vh;
+      font-weight: bold;
+    }
+
+    h4 {
+      font-size: 3vh;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+
+    p &.updated-at {
+      font-size: 10px;
+    }
+
+    &.green {
+      background-color: $success;
+
+      p {
+        &.updated-at {
+          color: lighten($success, 20%);
+        }
+      }
+    }
+
+    &.yellow {
+      background-color: $warning;
+
+      p {
+        &.updated-at {
+          color: lighten($warning, 60%);
+        }
+      }
+    }
+
+    &.red {
+      background-color: $failure;
+
+      p {
+        &.updated-at {
+          color: lighten($failure, 60%);
+        }
+      }
+    }
+
+    &.error {
+      background-color: $error;
+
+      p {
+        &.updated-at {
+          color: lighten($error, 60%);
+        }
+      }
+    }
+
+    div.floated {
+      display: inline-block;
+      margin-left: 20px;
+      margin-right: 20px;
+    }
+  }
+}

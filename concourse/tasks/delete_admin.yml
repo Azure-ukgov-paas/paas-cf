@@ -1,0 +1,36 @@
+---
+platform: linux
+image_resource:
+  type: docker-image
+  source:
+    repository: governmentpaas/cf-cli
+inputs:
+  - name: paas-cf
+  - name: cf-secrets
+  - name: cf-manifest
+  - name: admin-creds
+  - name: bosh-CA
+run:
+  path: sh
+  args:
+    - -e
+    - -u
+    - -c
+    - |
+      NAME=$(cat admin-creds/username)
+      if [ "${DISABLE_ADMIN_USER_CREATION:-}" = "true" ]; then
+        echo "Temporary user creation is disabled (DISABLE_ADMIN_USER_CREATION=${DISABLE_ADMIN_USER_CREATION}). Skipping."
+        exit 0
+      fi
+      ./paas-cf/concourse/scripts/import_bosh_ca.sh
+
+      VAL_FROM_YAML=$(pwd)/paas-cf/concourse/scripts/val_from_yaml.rb
+      CF_ADMIN=admin
+      CF_PASS=$($VAL_FROM_YAML secrets.uaa_admin_password cf-secrets/cf-secrets.yml)
+      API_ENDPOINT=$($VAL_FROM_YAML properties.cc.srv_api_uri cf-manifest/cf-manifest.yml)
+
+      echo "Removing user ${NAME}"
+
+      echo | cf login -a ${API_ENDPOINT} -u ${CF_ADMIN} -p ${CF_PASS}
+
+      cf delete-user "${NAME}" -f
